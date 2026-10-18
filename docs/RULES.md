@@ -2,7 +2,7 @@
 
 EvoGPT compares training recipes at five 10× training-compute scales spanning
 four orders of magnitude. A recipe must work across scales: its overall score is its weakest
-normalized scale score. Each week, a fixed number of eligible recipes advance
+compute multiplier. Each week, a fixed number of eligible recipes advance
 to the next compute budget.
 
 This is an initial protocol and reference implementation, not a claim that any
@@ -71,29 +71,37 @@ compute accounting before accepting it as competition evidence.
 ## 3. Scoring
 
 For each recipe revision and scale, average the validation losses over the
-required seeds, then compare that mean with the frozen baseline loss:
+required seeds, then find the compute the frozen baseline needs to reach that
+mean loss:
 
 ```text
-scale_score = 1 - mean_validation_loss / baseline_validation_loss
+scale_score = baseline FLOPs needed to match mean_validation_loss / scale budget
 overall_score = min(scale_score across all active scales)
 ```
 
-Higher is better. A scale score of `0` matches the reference; `0.05` means a
-5% reduction in validation cross-entropy; `-0.05` means a 5% increase. These
-are relative changes in loss, not percentage changes in perplexity, accuracy,
-or downstream task performance.
+The baseline curve passes through the calibrated loss at every budget and is
+piecewise linear in log loss against log FLOPs. Beyond the smallest and
+largest budgets it extends along the end segments. Calibrated baseline losses
+must strictly decrease with compute.
+
+Higher is better. A scale score of `1×` matches the reference; `2×` means the
+baseline needs twice the budget to match; `0.5×` means the entry matches the
+baseline at half its budget. A fixed loss reduction is worth more compute at
+larger budgets, where the baseline curve is flatter, so multipliers compare
+scales fairly where relative loss changes do not.
 
 For example, consider two entries with complete seed coverage:
 
 | Entry | S0 | S1 | S2 | Overall |
 | --- | ---: | ---: | ---: | ---: |
-| Steady | 0.06 | 0.05 | 0.04 | **0.04** |
-| Specialist | 0.12 | 0.10 | -0.01 | **-0.01** |
+| Steady | 1.6× | 1.5× | 1.4× | **1.4×** |
+| Specialist | 3.0× | 2.5× | 0.9× | **0.9×** |
 
 Steady ranks higher because its weakest scale is better. Strong results at one
 scale cannot compensate for a regression at another.
 
-Equal overall scores are ordered by the mean of the active scale scores, then
+Equal overall scores are ordered by the geometric mean of the active scale
+scores, then
 by stable entry identity. Comparisons use the stored numeric values; displayed
 rounding does not create a tie. Rankings are deterministic. This starter
 protocol does not claim statistical significance from a small score gap.

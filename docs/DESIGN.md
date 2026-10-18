@@ -10,10 +10,17 @@ A leaderboard at one training budget can reward ideas that work only at that
 budget. EvoGPT makes the intended behavior explicit: a recipe should improve
 the baseline across a range of budgets.
 
-Loss normalization makes improvements comparable across scales whose reference
-losses differ. Taking the minimum normalized score then focuses ranking on the
-weakest scale. The mean is a deterministic tiebreaker; it does not replace the
-minimum as the objective.
+The minimum only makes sense if scores mean the same thing at every scale.
+A relative loss reduction does not: the baseline curve flattens as compute
+grows, so the same gain shows up as a smaller loss change at larger budgets,
+and the minimum would almost always land on the largest scale. EvoGPT instead
+scores the compute multiplier, the factor by which the baseline's budget must
+grow to match the entry's loss. The calibrated baseline losses define that
+curve. The geometric mean is a deterministic tiebreaker; it does not replace
+the minimum as the objective.
+
+Multipliers magnify noise where the baseline curve is flat: a small loss
+difference at the largest scale is a large compute difference.
 
 The minimum is sensitive to noisy measurements. Required seeds reduce the
 effect of a single run, but the leaderboard is not an uncertainty estimate.
@@ -134,7 +141,7 @@ an explicit review process; those are not supplied by a JSON result parser.
 
 ## Scope
 
-This repository supplies a runnable baseline, result validation, normalized
+This repository supplies a runnable baseline, result validation, compute-multiplier
 leaderboards, deterministic advancement, tests, and reviewable automation.
 It does not provide a distributed training service, a web leaderboard, a
 submission sandbox, or verified public benchmark results.

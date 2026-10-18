@@ -100,27 +100,29 @@ def render_markdown(board):
     """Readable board, using domain fields without generating a hosted service."""
     lines = ["# EvoGPT leaderboard", "", f"Contest: `{_cell(board['contest_id'])}` · "
              f"Status: **{_cell(board['status'])}** · Round: {board['round']}", "",
-             "Higher score is better. Overall score is the weakest active scale.", ""]
+             "Scores are compute multipliers: how many times this scale's FLOPs the baseline "
+             "needs to reach the same loss. Higher is better; the overall score is the weakest "
+             "active scale.", ""]
     if any(scale["baseline_is_fixture"] for scale in board["scales"].values()):
         lines += ["> SYNTHETIC DEMO: these scores are fixtures, not measured training records.", ""]
-    lines += ["## Overall", "", "| Rank | Entry | Worst scale | Mean score | Coverage |",
+    lines += ["## Overall", "", "| Rank | Entry | Worst scale | Geometric mean | Coverage |",
               "| ---: | --- | ---: | ---: | ---: |"]
     rank = 0
     for row in board["overall"]:
         scored = row["score"] is not None
         rank += int(scored)
-        score = f"{row['score']:.2%}" if scored else row["status"]
-        mean = f"{row['mean_score']:.2%}" if scored else "—"
+        score = f"{row['score']:.3g}×" if scored else row["status"]
+        mean = f"{row['mean_score']:.3g}×" if scored else "—"
         lines.append(f"| {rank if scored else '—'} | {_cell(row['entry_id'])} | {score} | "
                      f"{mean} | {row['completed_scales']}/{row['required_scales']} |")
     if not board["overall"]:
         lines += ["", "No entries yet."]
     for scale_id, scale in board["scales"].items():
         lines += ["", f"## {_cell(scale_id)} · {scale['max_flops']:,} counted FLOPs", "",
-                  "| Entry | Mean validation loss | Score | Seeds complete |",
+                  "| Entry | Mean validation loss | Compute multiplier | Seeds complete |",
                   "| --- | ---: | ---: | --- |"]
         for row in scale["rows"]:
-            score = f"{row['score']:.2%}" if row["score"] is not None else "—"
+            score = f"{row['score']:.3g}×" if row["score"] is not None else "—"
             loss = f"{row['mean_loss']:.6f}" if row["mean_loss"] is not None else "—"
             lines.append(f"| {_cell(row['entry_id'])} | {loss} | {score} | "
                          f"{'yes' if row['complete'] else 'no'} |")
@@ -173,18 +175,20 @@ def demo(output):
     contest = core.parse_config(config)
     digest = core.config_digest(contest)
     fixtures = []
-    # The specialist wins s0, but robust wins the minimax comparison.
-    for name, scores in {"robust": (0.12, 0.10), "specialist": (0.24, 0.03),
-                         "fragile": (0.07, -0.04)}.items():
+    # Compute multipliers at s0 and s1. The specialist wins s0, but robust has
+    # the better weakest scale.
+    for name, multipliers in {"robust": (1.8, 1.6), "specialist": (3.0, 1.1),
+                              "fragile": (1.5, 0.8)}.items():
         revision = hashlib.sha1(f"synthetic:{name}".encode()).hexdigest()
-        for scale, score in zip(config["scales"], scores):
+        for scale, multiplier in zip(config["scales"], multipliers):
+            loss = core.baseline_loss_at(contest, scale["max_flops"] * multiplier)
             for seed in config["seeds"]:
                 run_id = f"demo-{name}-{scale['id']}-{seed}"
                 fixtures.append({
                     "schema_version": 1, "run_id": run_id, "recipe_id": name,
                     "revision": revision, "scale_id": scale["id"], "seed": seed,
                     "recipe_sha256": hashlib.sha256(f"synthetic-policy:{name}".encode()).hexdigest(),
-                    "val_loss": scale["baseline_loss"] * (1 - score) + (seed - 1) * 0.001,
+                    "val_loss": loss + (seed - 1) * 0.001,
                     "train_flops": scale["max_flops"], "train_tokens": 1024,
                     "dataset_id": config["dataset_id"], "config_digest": digest,
                     "created_at": "2026-01-06T00:00:00Z",

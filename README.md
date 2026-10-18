@@ -64,18 +64,24 @@ supported settings, compatibility limits, and what still needs building.
 | `s3` | 10¹⁸ | After the second promotion |
 | `s4` | 10¹⁹ | After the third promotion |
 
-At each scale, average validation loss over seeds `0`, `1`, and `2`, then score
-the relative reduction from a frozen baseline:
+At each scale, average validation loss over seeds `0`, `1`, and `2`, then ask
+how much compute the frozen baseline needs to reach that loss:
 
 ```text
-scale_score = 1 - mean_validation_loss / baseline_validation_loss
+scale_score = baseline FLOPs needed to match mean_validation_loss / scale budget
 overall_score = min(scale_score across all active scales)
 ```
 
-Higher scores win. A recipe that improves every active scale by 4% ranks above
-one that improves most scales by 20% but regresses at one. Each scale also has
-its own leaderboard. Ties in the overall ranking use the mean scale score,
-then the immutable entry ID.
+The baseline's losses at the five budgets define its curve, interpolated
+linearly in log loss against log FLOPs. A score of `1.4×` means the baseline
+needs 1.4 times the budget to match; below `1×` is worse than the baseline.
+Unlike a percentage loss reduction, a multiplier means the same thing at every
+scale, so the weakest scale is a fair comparison.
+
+Higher scores win. A recipe that is 1.4× more compute-efficient at every
+active scale ranks above one that is 3× at most scales but 0.9× at one. Each
+scale also has its own leaderboard. Ties in the overall ranking use the
+geometric mean of scale scores, then the immutable entry ID.
 
 This repository includes a Python CLI, a small original PyTorch GPT baseline,
 result validation, reproducible tournament state, synthetic examples, and

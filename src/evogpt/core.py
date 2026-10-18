@@ -174,6 +174,9 @@ def parse_config(raw: Mapping[str, Any]) -> Contest:
         raise ValidationError("Scale ids must be unique")
     if any(b.max_flops != a.max_flops * 10 for a, b in zip(scales, scales[1:])):
         raise ValidationError("Each successive scale must have exactly 10 times the FLOPs budget")
+    calibrated = [scale.baseline_loss for scale in scales if scale.baseline_loss is not None]
+    if any(later >= earlier for earlier, later in zip(calibrated, calibrated[1:])):
+        raise ValidationError("Baseline losses must strictly decrease as compute grows")
     initial = _integer(raw["initial_scale_count"], "initial_scale_count", 1)
     if initial > len(scales):
         raise ValidationError("initial_scale_count cannot exceed the number of scales")
@@ -326,6 +329,47 @@ def _mean(values: list[float]) -> float:
     return math.fsum(value / len(values) for value in values)
 
 
+def _baseline_curve(contest: Contest) -> list[tuple[float, float]]:
+    """(log FLOPs, log loss) at each calibrated scale."""
+    points = [(math.log(s.max_flops), math.log(s.baseline_loss)) for s in contest.scales if s.baseline_loss is not None]
+    if len(points) < 2:
+        raise ValidationError("Compute multipliers need at least two calibrated baseline losses")
+    return points
+
+
+def baseline_loss_at(contest: Contest, flops: float) -> float:
+    """The baseline curve's loss at any compute; the inverse of compute_multiplier."""
+    points = _baseline_curve(contest)
+    segments = list(zip(points, points[1:]))
+    x = math.log(flops)
+    (x0, y0), (x1, y1) = next(((a, b) for a, b in segments if x <= b[0]), segments[-1])
+    return math.exp(y0 + (x - x0) * (y1 - y0) / (x1 - x0))
+
+
+def compute_multiplier(contest: Contest, scale: Scale, loss: float) -> float:
+    """Baseline compute needed to reach loss, as a multiple of scale's budget.
+
+    The baseline curve is piecewise linear in log loss against log compute
+    through the calibrated scales, extended past the ends along the end
+    segments. 2.0 means the baseline needs twice this scale's FLOPs to match.
+    """
+    points = _baseline_curve(contest)
+    if not loss > 0:
+        raise ValidationError("Compute multiplier is not finite; validation loss must be positive")
+    target = math.log(loss)
+    segments = list(zip(points, points[1:]))
+    (x0, y0), (x1, y1) = next(((a, b) for a, b in segments if target >= b[1]), segments[-1])
+    log_multiplier = x0 + (target - y0) * (x1 - x0) / (y1 - y0) - math.log(scale.max_flops)
+    try:
+        return math.exp(log_multiplier)
+    except OverflowError as exc:
+        raise ValidationError("Compute multiplier is not finite; check the loss and baseline") from exc
+
+
+def _geometric_mean(values: list[float]) -> float:
+    return math.exp(_mean([math.log(value) for value in values]))
+
+
 def _score(contest: Contest, evidence: Iterable[Result], active_count: int,
            allowed: list[str] | None) -> dict[str, Any]:
     evidence = list(evidence)
@@ -357,9 +401,9 @@ def _score(contest: Contest, evidence: Iterable[Result], active_count: int,
                     if entry in completed:
                         completed[entry] += 1
                     if scale.baseline_loss is not None:
-                        score = 1.0 - mean_loss / scale.baseline_loss
-                        if not math.isfinite(score):
-                            raise ValidationError("Normalized score is not finite; check the loss and baseline")
+                        score = compute_multiplier(contest, scale, mean_loss)
+                        if not 0 < score < math.inf:
+                            raise ValidationError("Compute multiplier is not finite; check the loss and baseline")
                         if entry in entry_scores:
                             entry_scores[entry].append(score)
                 else:
@@ -386,7 +430,7 @@ def _score(contest: Contest, evidence: Iterable[Result], active_count: int,
             "entry_id": entry, "recipe_id": recipe_id, "revision": revision,
             "status": "incomplete" if not complete else "uncalibrated" if uncalibrated else "eligible",
             "score": min(scores) if complete and not uncalibrated else None,
-            "mean_score": _mean(scores) if complete and not uncalibrated else None,
+            "mean_score": _geometric_mean(scores) if complete and not uncalibrated else None,
             "completed_scales": completed[entry], "required_scales": active_count,
             "missing": missing[entry],
         })

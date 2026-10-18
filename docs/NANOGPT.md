@@ -201,7 +201,7 @@ streams, require evidence across repeated runs, and compare records on the
 same hardware.
 
 EvoGPT instead measures validation loss at several counted training FLOPs
-budgets and ranks the weakest normalized score. It does not inherit FineWeb
+budgets and ranks the weakest compute multiplier. It does not inherit FineWeb
 scores, timing records, Muon/FP8 optimizations, or speedrun submission
 compatibility. Useful future work includes a pinned curated corpus,
 calibrated reference runs, independently replicated results, scale-dependent

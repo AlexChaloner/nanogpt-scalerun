@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 from evogpt.core import (
-    ValidationError, advance, config_digest, initial_state, leaderboard,
+    ValidationError, advance, baseline_loss_at, compute_multiplier, config_digest, initial_state, leaderboard,
     load_config, load_results, parse_config, parse_result, validate_state,
 )
 
@@ -20,12 +20,16 @@ SHA_A = "a" * 40
 SHA_B = "b" * 40
 
 
+# Loss falls by sqrt(10) per 10x compute, so a multiplier is (baseline / loss) ** 2.
+BASE = [10.0 * 10 ** (-i / 2) for i in range(4)]
+
+
 def config(scales=4, seeds=(0, 1), top_n=2, initial=2):
     return {
         "schema_version": 1, "contest_id": "test-season", "dataset_id": "dataset-v1",
         "scales": [
             {"id": f"s{i}", "max_flops": 1000 * 10 ** i,
-             "baseline_loss": 10.0, "baseline_is_fixture": True}
+             "baseline_loss": BASE[i], "baseline_is_fixture": True}
             for i in range(scales)
         ],
         "initial_scale_count": initial, "top_n": top_n, "seeds": list(seeds),
@@ -97,6 +101,7 @@ class ConfigTests(unittest.TestCase):
             lambda c: c["scales"][0].update(baseline_loss=0),
             lambda c: c["scales"][0].update(baseline_loss=True),
             lambda c: c["scales"][0].update(baseline_is_fixture=1),
+            lambda c: c["scales"][1].update(baseline_loss=c["scales"][0]["baseline_loss"]),
         ]
         for mutation in mutations:
             raw = config()
@@ -183,23 +188,37 @@ class LeaderboardTests(unittest.TestCase):
     def test_minimax_and_mean_tie_breaking(self):
         # Specialist has a better average, but a worse weakest scale.
         records = [
-            *entry(self.contest, "specialist", [0.1, 6.0]),
-            *entry(self.contest, "balanced", [4.0, 4.0]),
-            *entry(self.contest, "tie-better-mean", [3.0, 4.0]),
-            *entry(self.contest, "a-tie", [3.0, 4.0]),
+            *entry(self.contest, "specialist", [BASE[0] / 10, BASE[1]]),
+            *entry(self.contest, "balanced", [BASE[0] / 2, BASE[1] / 2]),
+            *entry(self.contest, "tie-better-mean", [BASE[0] / 4, BASE[1] / 2]),
+            *entry(self.contest, "a-tie", [BASE[0] / 4, BASE[1] / 2]),
         ]
         rows = leaderboard(self.contest, records)["overall"]
         self.assertEqual([r["recipe_id"] for r in rows], ["a-tie", "tie-better-mean", "balanced", "specialist"])
-        self.assertAlmostEqual(rows[0]["score"], 0.6)
-        self.assertAlmostEqual(rows[0]["mean_score"], 0.65)
-        self.assertAlmostEqual(rows[-1]["score"], 0.4)
+        self.assertAlmostEqual(rows[0]["score"], 4.0)
+        self.assertAlmostEqual(rows[0]["mean_score"], 8.0)
+        self.assertAlmostEqual(rows[-1]["score"], 1.0)
+        self.assertAlmostEqual(rows[-1]["mean_score"], 10.0)
+
+    def test_multiplier_interpolates_and_extends_the_baseline_curve(self):
+        contest = parse_config(config(initial=4))
+        scale = {s.id: s for s in contest.scales}
+        self.assertAlmostEqual(compute_multiplier(contest, scale["s0"], BASE[1]), 10.0)
+        self.assertAlmostEqual(compute_multiplier(contest, scale["s1"], BASE[0]), 0.1)
+        self.assertAlmostEqual(compute_multiplier(contest, scale["s1"], BASE[1]), 1.0)
+        self.assertAlmostEqual(compute_multiplier(contest, scale["s3"], BASE[3] / 2), 4.0)
+        self.assertAlmostEqual(compute_multiplier(contest, scale["s0"], BASE[0] * 2), 0.25)
+        for flops in (100, 3000, 25_000, 10 ** 7):
+            loss = baseline_loss_at(contest, flops)
+            self.assertAlmostEqual(compute_multiplier(contest, scale["s1"], loss), flops / scale["s1"].max_flops)
 
     def test_average_seeds_before_normalization(self):
         records = entry(self.contest, "alpha", [2.0, 3.0])
         records[1]["val_loss"] = 6.0
         board = leaderboard(self.contest, records)
         self.assertEqual(board["scales"]["s0"]["rows"][0]["mean_loss"], 4.0)
-        self.assertAlmostEqual(board["overall"][0]["score"], 0.6)
+        self.assertAlmostEqual(board["scales"]["s0"]["rows"][0]["score"], (10 / 4) ** 2)
+        self.assertAlmostEqual(board["overall"][0]["score"], (BASE[1] / 3) ** 2)
 
     def test_never_combine_revisions_or_incomplete_seeds(self):
         records = [
@@ -235,14 +254,14 @@ class LeaderboardTests(unittest.TestCase):
         self.assertFalse(board["scales"]["s2"]["active"])
         self.assertEqual(board["scales"]["s2"]["rows"], [])
 
-    def test_loss_worse_than_baseline_can_have_negative_score(self):
-        row = leaderboard(self.contest, entry(self.contest, "alpha", [20.0, 30.0]))["overall"][0]
-        self.assertEqual(row["score"], -2.0)
+    def test_loss_worse_than_baseline_has_multiplier_below_one(self):
+        row = leaderboard(self.contest, entry(self.contest, "alpha", [BASE[0] * 2, BASE[1] * 10]))["overall"][0]
+        self.assertAlmostEqual(row["score"], 0.01)
+        self.assertAlmostEqual(row["mean_score"], 0.05)
 
-    def test_zero_loss_has_perfect_score(self):
-        row = leaderboard(self.contest, entry(self.contest, "alpha", [0.0, 0.0]))["overall"][0]
-        self.assertEqual(row["score"], 1.0)
-        self.assertEqual(row["mean_score"], 1.0)
+    def test_zero_loss_cannot_be_scored(self):
+        with self.assertRaisesRegex(ValidationError, "positive"):
+            leaderboard(self.contest, entry(self.contest, "alpha", [0.0, 0.0]))
 
 
 class PromotionTests(unittest.TestCase):

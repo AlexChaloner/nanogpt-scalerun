@@ -583,7 +583,7 @@ def leaderboard(contest: Contest, results: Iterable[Result | Mapping[str, Any]],
     board = _score(contest, evidence, state["active_scale_count"], state["eligible_entries"])
     board.update({
         "contest_id": contest.contest_id, "config_digest": config_digest(contest),
-        "round": state["round"], "deadline": state["deadline"],
+        "top_n": contest.top_n, "round": state["round"], "deadline": state["deadline"],
         "active_scale_ids": [scale.id for scale in contest.scales[:state["active_scale_count"]]],
         "eligible_entries": state["eligible_entries"],
     })

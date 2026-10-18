@@ -195,7 +195,8 @@ Multiple paths are accepted after `--results`.
 evogpt validate --config configs/season.json --results submissions \
   --state competition/state.json
 evogpt leaderboard --config configs/season.json --results submissions \
-  --state competition/state.json --output leaderboard.json --markdown leaderboard.md
+  --state competition/state.json --output leaderboard.json --markdown leaderboard.md \
+  --html leaderboard.html
 evogpt advance --config configs/season.json --results submissions \
   --state competition/state.json --as-of 2026-11-09T00:00:00Z \
   --output competition/state.proposed.json
@@ -267,6 +268,11 @@ When a round is due, download the `evogpt-weekly-promotion` artifact, review its
 ranking and proposed state, then commit the accepted state as
 `season/state.json`. The workflow has read-only repository permission. It does
 not launch GPU jobs, execute contributor training code, or commit changes.
+
+The leaderboard site workflow publishes the committed season as a static page
+on GitHub Pages after every push to `main` and each Monday. Before a season is
+committed it publishes the synthetic demo. To turn it on, set **Settings →
+Pages → Source** to **GitHub Actions**.
 
 ```bash
 python -m unittest discover -s tests -v

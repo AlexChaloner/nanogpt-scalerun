@@ -11,6 +11,7 @@ import unittest
 
 from evogpt.cli import main, read_json, source_revision, write_json
 from evogpt import core
+from evogpt.page import render_html
 
 
 class CliTests(unittest.TestCase):
@@ -28,6 +29,9 @@ class CliTests(unittest.TestCase):
             board = read_json(root / "leaderboard.json")
             self.assertEqual(board["overall"][0]["recipe_id"], "robust")
             self.assertEqual(board["scales"]["s0"]["rows"][0]["recipe_id"], "specialist")
+            page = (root / "leaderboard.html").read_text(encoding="utf-8")
+            self.assertIn("Synthetic demo", page)
+            self.assertLess(page.index("robust"), page.index("fragile"))
             self.assertIn("SYNTHETIC DEMO", (root / "leaderboard.md").read_text())
             state = read_json(root / "state.week1.json")
             core.validate_state(core.load_config(root / "contest.json"), state)
@@ -41,6 +45,13 @@ class CliTests(unittest.TestCase):
             code, _, errors = self.invoke("demo", "--output", str(root))
             self.assertEqual(code, 2)
             self.assertIn("empty", errors)
+
+    def test_page_renders_an_empty_uncalibrated_season(self):
+        contest = core.load_config(Path(__file__).parent.parent / "configs" / "contest.json")
+        page = render_html(core.leaderboard(contest, []))
+        self.assertIn("No entries yet.", page)
+        self.assertIn("Uncalibrated", page)
+        self.assertNotIn("Synthetic demo", page)
 
     def test_calibration_preserves_reference_provenance_and_changes_digest(self):
         with tempfile.TemporaryDirectory() as temporary:

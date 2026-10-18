@@ -15,6 +15,7 @@ import tempfile
 
 from . import __version__
 from . import core
+from .page import render_html
 
 
 def read_json(path):
@@ -203,6 +204,7 @@ def demo(output):
     board = core.leaderboard(contest, results, state)
     write_json(root / "leaderboard.json", board)
     (root / "leaderboard.md").write_text(render_markdown(board), encoding="utf-8")
+    (root / "leaderboard.html").write_text(render_html(board), encoding="utf-8")
     next_state = core.advance(contest, results, state, timestamp("2026-01-12T00:00:00Z"))
     write_json(root / "state.week1.json", next_state)
     print(f"Synthetic demo written to {root.resolve()}")
@@ -255,6 +257,7 @@ def parser():
     config_args(board, results=True, state=True)
     board.add_argument("--output")
     board.add_argument("--markdown")
+    board.add_argument("--html")
     init = commands.add_parser("init", help="Create the initial weekly tournament state")
     config_args(init)
     init.add_argument("--output", required=True)
@@ -340,6 +343,10 @@ def main(argv=None):
                         path = Path(args.markdown)
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_text(render_markdown(board), encoding="utf-8")
+                    if args.html:
+                        path = Path(args.html)
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text(render_html(board), encoding="utf-8")
                 elif args.command == "advance":
                     as_of = timestamp(args.as_of) if args.as_of else datetime.now(timezone.utc)
                     _emit(core.advance(contest, results, state, as_of), args.output)

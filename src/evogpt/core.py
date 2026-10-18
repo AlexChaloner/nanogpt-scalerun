@@ -329,6 +329,13 @@ def _mean(values: list[float]) -> float:
     return math.fsum(value / len(values) for value in values)
 
 
+def median(values: Iterable[float]) -> float:
+    """Median over seeds, so one diverged or lucky seed cannot move a score."""
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
 def _baseline_curve(contest: Contest) -> list[tuple[float, float]]:
     """(log FLOPs, log loss) at each calibrated scale."""
     points = [(math.log(s.max_flops), math.log(s.baseline_loss)) for s in contest.scales if s.baseline_loss is not None]
@@ -395,13 +402,13 @@ def _score(contest: Contest, evidence: Iterable[Result], active_count: int,
                     continue
                 absent = [seed for seed in contest.seeds if (entry, scale.id, seed) not in by_key]
                 complete = not absent
-                mean_loss = _mean([r.val_loss for r in present]) if present else None
+                median_loss = median(r.val_loss for r in present) if present else None
                 score = None
                 if complete:
                     if entry in completed:
                         completed[entry] += 1
                     if scale.baseline_loss is not None:
-                        score = compute_multiplier(contest, scale, mean_loss)
+                        score = compute_multiplier(contest, scale, median_loss)
                         if not 0 < score < math.inf:
                             raise ValidationError("Compute multiplier is not finite; check the loss and baseline")
                         if entry in entry_scores:
@@ -412,7 +419,7 @@ def _score(contest: Contest, evidence: Iterable[Result], active_count: int,
                 recipe_id, revision = entry.split("@")
                 rows.append({
                     "entry_id": entry, "recipe_id": recipe_id, "revision": revision,
-                    "mean_loss": mean_loss, "score": score, "seeds": [r.seed for r in present],
+                    "median_loss": median_loss, "score": score, "seeds": [r.seed for r in present],
                     "complete": complete,
                 })
             rows.sort(key=lambda row: (row["score"] is None, -(row["score"] or 0.0), row["entry_id"]))

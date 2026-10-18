@@ -212,13 +212,20 @@ class LeaderboardTests(unittest.TestCase):
             loss = baseline_loss_at(contest, flops)
             self.assertAlmostEqual(compute_multiplier(contest, scale["s1"], loss), flops / scale["s1"].max_flops)
 
-    def test_average_seeds_before_normalization(self):
+    def test_take_median_seed_before_normalization(self):
         records = entry(self.contest, "alpha", [2.0, 3.0])
         records[1]["val_loss"] = 6.0
         board = leaderboard(self.contest, records)
-        self.assertEqual(board["scales"]["s0"]["rows"][0]["mean_loss"], 4.0)
+        self.assertEqual(board["scales"]["s0"]["rows"][0]["median_loss"], 4.0)
         self.assertAlmostEqual(board["scales"]["s0"]["rows"][0]["score"], (10 / 4) ** 2)
         self.assertAlmostEqual(board["overall"][0]["score"], (BASE[1] / 3) ** 2)
+
+    def test_one_diverged_seed_does_not_move_an_odd_median(self):
+        contest = parse_config(config(seeds=(0, 1, 2, 3, 4)))
+        records = entry(contest, "alpha", [2.0, 3.0])
+        records[0]["val_loss"] = 1000.0
+        board = leaderboard(contest, records)
+        self.assertEqual(board["scales"]["s0"]["rows"][0]["median_loss"], 2.0)
 
     def test_never_combine_revisions_or_incomplete_seeds(self):
         records = [

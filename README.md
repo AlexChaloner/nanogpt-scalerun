@@ -58,17 +58,17 @@ supported settings, compatibility limits, and what still needs building.
 
 | Scale | Training FLOPs | Opens |
 | --- | ---: | --- |
-| `s0` | 10¹⁵ | Initially |
-| `s1` | 10¹⁶ | Initially |
-| `s2` | 10¹⁷ | After the first promotion |
-| `s3` | 10¹⁸ | After the second promotion |
-| `s4` | 10¹⁹ | After the third promotion |
+| `s0` | 10¹⁴ | Initially |
+| `s1` | 10¹⁵ | Initially |
+| `s2` | 10¹⁶ | After the first promotion |
+| `s3` | 10¹⁷ | After the second promotion |
+| `s4` | 10¹⁸ | After the third promotion |
 
-At each scale, average validation loss over seeds `0`, `1`, and `2`, then ask
+At each scale, take the median validation loss over seeds `0` to `4`, then ask
 how much compute the frozen baseline needs to reach that loss:
 
 ```text
-scale_score = baseline FLOPs needed to match mean_validation_loss / scale budget
+scale_score = baseline FLOPs needed to match median_validation_loss / scale budget
 overall_score = min(scale_score across all active scales)
 ```
 
@@ -155,11 +155,12 @@ check your setup, but is not enough to calibrate or rank a competition.
 
 A recipe is a scaling policy: shared `model` and `training` settings plus
 per-scale overrides under `scales`. The baseline in `examples/baseline.json`
-grows from about 2M parameters at `s0` to about 290M at `s4`, at roughly 20
-training tokens per parameter. Its top scale trains on about 5B byte tokens,
+grows from about 0.3M parameters at `s0` to about 32M at `s4`, at roughly 120
+training bytes per parameter (sweeps on this corpus put the compute optimum
+near 100). Its top scale trains on about 4.4B byte tokens,
 so the training split should be at least that large to avoid repeating data.
 
-Collect the reference recipe at **all five scales and all three seeds**, using
+Collect the reference recipe at **all five scales and all five seeds**, using
 a separate output directory for every run. Keep its source revision fixed.
 Then freeze the measured baseline losses:
 

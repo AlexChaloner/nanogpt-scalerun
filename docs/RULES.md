@@ -58,7 +58,7 @@ overrides, identified by one digest. The whole policy is committed before any
 of its runs, so per-scale choices cannot be selected after seeing their
 results; changing any scale's settings creates a new entry.
 
-The default required seeds are `0`, `1`, and `2`. An entry needs one accepted
+The default required seeds are `0` to `4`. An entry needs one accepted
 result for every required seed at every currently active scale to qualify for
 the overall leaderboard. Missing runs cannot silently become good scores.
 Duplicate or inconsistent records are rejected instead of being cherry-picked.
@@ -70,12 +70,12 @@ compute accounting before accepting it as competition evidence.
 
 ## 3. Scoring
 
-For each recipe revision and scale, average the validation losses over the
+For each recipe revision and scale, take the median validation loss over the
 required seeds, then find the compute the frozen baseline needs to reach that
-mean loss:
+loss:
 
 ```text
-scale_score = baseline FLOPs needed to match mean_validation_loss / scale budget
+scale_score = baseline FLOPs needed to match median_validation_loss / scale budget
 overall_score = min(scale_score across all active scales)
 ```
 

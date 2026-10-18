@@ -119,11 +119,11 @@ def render_markdown(board):
         lines += ["", "No entries yet."]
     for scale_id, scale in board["scales"].items():
         lines += ["", f"## {_cell(scale_id)} · {scale['max_flops']:,} counted FLOPs", "",
-                  "| Entry | Mean validation loss | Compute multiplier | Seeds complete |",
+                  "| Entry | Median validation loss | Compute multiplier | Seeds complete |",
                   "| --- | ---: | ---: | --- |"]
         for row in scale["rows"]:
             score = f"{row['score']:.3g}×" if row["score"] is not None else "—"
-            loss = f"{row['mean_loss']:.6f}" if row["mean_loss"] is not None else "—"
+            loss = f"{row['median_loss']:.6f}" if row["median_loss"] is not None else "—"
             lines.append(f"| {_cell(row['entry_id'])} | {loss} | {score} | "
                          f"{'yes' if row['complete'] else 'no'} |")
     lines += ["", f"Configuration digest: `{board['config_digest']}`", ""]
@@ -166,10 +166,10 @@ def demo(output):
     config = {
         "schema_version": 1, "contest_id": "evogpt-synthetic-demo",
         "dataset_id": "synthetic-demo-no-real-training",
-        "scales": [{"id": f"s{i}", "max_flops": 10 ** (15 + i),
+        "scales": [{"id": f"s{i}", "max_flops": 10 ** (14 + i),
                     "baseline_loss": 5.0 - i * 0.5, "baseline_is_fixture": True}
                    for i in range(5)],
-        "initial_scale_count": 2, "top_n": 2, "seeds": [0, 1, 2],
+        "initial_scale_count": 2, "top_n": 2, "seeds": [0, 1, 2, 3, 4],
         "epoch_start": "2026-01-05T00:00:00Z", "interval_days": 7,
     }
     contest = core.parse_config(config)
@@ -188,7 +188,7 @@ def demo(output):
                     "schema_version": 1, "run_id": run_id, "recipe_id": name,
                     "revision": revision, "scale_id": scale["id"], "seed": seed,
                     "recipe_sha256": hashlib.sha256(f"synthetic-policy:{name}".encode()).hexdigest(),
-                    "val_loss": loss + (seed - 1) * 0.001,
+                    "val_loss": loss + (seed - 2) * 0.001,
                     "train_flops": scale["max_flops"], "train_tokens": 1024,
                     "dataset_id": config["dataset_id"], "config_digest": digest,
                     "created_at": "2026-01-06T00:00:00Z",
@@ -221,7 +221,7 @@ def calibrate(args):
         rows = [result for result in candidates if result["scale_id"] == scale["id"]]
         if sorted(result["seed"] for result in rows) != sorted(config["seeds"]):
             raise ValueError(f"Calibration needs exactly the required seeds for scale {scale['id']}")
-        scale["baseline_loss"] = math.fsum(result["val_loss"] / len(rows) for result in rows)
+        scale["baseline_loss"] = core.median(result["val_loss"] for result in rows)
         scale["baseline_is_fixture"] = False
     core.parse_config(config)
     output = Path(args.output)

@@ -1,11 +1,9 @@
 {
   "schema_version": 2,
   "model": {
-    "context_length": 512,
     "dropout": 0.0
   },
   "training": {
-    "batch_size": 32,
     "weight_decay": 0.1,
     "beta1": 0.9,
     "beta2": 0.95,
@@ -19,24 +17,79 @@
   },
   "scales": {
     "s0": {
-      "model": {"n_layer": 4, "n_head": 3, "n_embd": 192},
-      "training": {"gradient_accumulation_steps": 1, "learning_rate": 0.002, "min_lr": 0.0002, "warmup_iters": 100}
+      "model": {
+        "n_layer": 3,
+        "n_head": 5,
+        "n_embd": 80,
+        "context_length": 256
+      },
+      "training": {
+        "batch_size": 64,
+        "gradient_accumulation_steps": 1,
+        "learning_rate": 0.003,
+        "min_lr": 0.0003,
+        "warmup_iters": 100
+      }
     },
     "s1": {
-      "model": {"n_layer": 6, "n_head": 5, "n_embd": 320},
-      "training": {"gradient_accumulation_steps": 2, "learning_rate": 0.0015, "min_lr": 0.00015, "warmup_iters": 150}
+      "model": {
+        "n_layer": 3,
+        "n_head": 5,
+        "n_embd": 160,
+        "context_length": 256
+      },
+      "training": {
+        "batch_size": 64,
+        "gradient_accumulation_steps": 1,
+        "learning_rate": 0.003,
+        "min_lr": 0.0003,
+        "warmup_iters": 100
+      }
     },
     "s2": {
-      "model": {"n_layer": 8, "n_head": 8, "n_embd": 512},
-      "training": {"gradient_accumulation_steps": 4, "learning_rate": 0.001, "min_lr": 0.0001, "warmup_iters": 250}
+      "model": {
+        "n_layer": 5,
+        "n_head": 7,
+        "n_embd": 224,
+        "context_length": 512
+      },
+      "training": {
+        "batch_size": 32,
+        "gradient_accumulation_steps": 2,
+        "learning_rate": 0.003,
+        "min_lr": 0.0003,
+        "warmup_iters": 150
+      }
     },
     "s3": {
-      "model": {"n_layer": 12, "n_head": 12, "n_embd": 768},
-      "training": {"gradient_accumulation_steps": 8, "learning_rate": 0.0006, "min_lr": 0.00006, "warmup_iters": 400}
+      "model": {
+        "n_layer": 8,
+        "n_head": 5,
+        "n_embd": 320,
+        "context_length": 512
+      },
+      "training": {
+        "batch_size": 32,
+        "gradient_accumulation_steps": 4,
+        "learning_rate": 0.002,
+        "min_lr": 0.0002,
+        "warmup_iters": 250
+      }
     },
     "s4": {
-      "model": {"n_layer": 18, "n_head": 18, "n_embd": 1152},
-      "training": {"gradient_accumulation_steps": 16, "learning_rate": 0.0004, "min_lr": 0.00004, "warmup_iters": 600}
+      "model": {
+        "n_layer": 10,
+        "n_head": 8,
+        "n_embd": 512,
+        "context_length": 512
+      },
+      "training": {
+        "batch_size": 32,
+        "gradient_accumulation_steps": 8,
+        "learning_rate": 0.0015,
+        "min_lr": 0.00015,
+        "warmup_iters": 400
+      }
     }
   }
 }

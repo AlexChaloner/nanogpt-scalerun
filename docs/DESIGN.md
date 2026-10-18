@@ -22,8 +22,8 @@ the minimum as the objective.
 Multipliers magnify noise where the baseline curve is flat: a small loss
 difference at the largest scale is a large compute difference.
 
-The minimum is sensitive to noisy measurements. Required seeds reduce the
-effect of a single run, but the leaderboard is not an uncertainty estimate.
+The minimum is sensitive to noisy measurements. Taking the median of five
+seeds means one diverged or lucky run cannot move a score, but the leaderboard is not an uncertainty estimate.
 Confidence intervals, paired statistical comparisons, and larger seed sets are
 reasonable extensions for a mature competition.
 

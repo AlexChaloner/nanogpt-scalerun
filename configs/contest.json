@@ -3,11 +3,11 @@
   "contest_id": "evogpt-season-001",
   "dataset_id": "UNCONFIGURED",
   "scales": [
-    {"id": "s0", "max_flops": 10000000000, "baseline_loss": null, "baseline_is_fixture": false},
-    {"id": "s1", "max_flops": 100000000000, "baseline_loss": null, "baseline_is_fixture": false},
-    {"id": "s2", "max_flops": 1000000000000, "baseline_loss": null, "baseline_is_fixture": false},
-    {"id": "s3", "max_flops": 10000000000000, "baseline_loss": null, "baseline_is_fixture": false},
-    {"id": "s4", "max_flops": 100000000000000, "baseline_loss": null, "baseline_is_fixture": false}
+    {"id": "s0", "max_flops": 1000000000000000, "baseline_loss": null, "baseline_is_fixture": false},
+    {"id": "s1", "max_flops": 10000000000000000, "baseline_loss": null, "baseline_is_fixture": false},
+    {"id": "s2", "max_flops": 100000000000000000, "baseline_loss": null, "baseline_is_fixture": false},
+    {"id": "s3", "max_flops": 1000000000000000000, "baseline_loss": null, "baseline_is_fixture": false},
+    {"id": "s4", "max_flops": 10000000000000000000, "baseline_loss": null, "baseline_is_fixture": false}
   ],
   "initial_scale_count": 2,
   "top_n": 5,

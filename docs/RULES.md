@@ -27,11 +27,11 @@ The default budgets are:
 
 | Scale | Maximum estimated training FLOPs | Relative budget |
 | --- | ---: | ---: |
-| S0 | 10,000,000,000 | 1× |
-| S1 | 100,000,000,000 | 10× |
-| S2 | 1,000,000,000,000 | 100× |
-| S3 | 10,000,000,000,000 | 1,000× |
-| S4 | 100,000,000,000,000 | 10,000× |
+| S0 | 1,000,000,000,000,000 | 1× |
+| S1 | 10,000,000,000,000,000 | 10× |
+| S2 | 100,000,000,000,000,000 | 100× |
+| S3 | 1,000,000,000,000,000,000 | 1,000× |
+| S4 | 10,000,000,000,000,000,000 | 10,000× |
 
 The production configuration intentionally starts with uncalibrated baseline
 losses. Collect real reference runs and calibrate before starting a ranked
@@ -53,10 +53,10 @@ Different recipe settings under one source revision cannot be pooled into a
 single entry. Use a separate recipe ID for a distinct recipe at the same
 revision.
 
-The bundled trainer uses one fixed recipe at every scale. Any future
-scale-dependent implementation must commit its full scaling policy in advance
-and identify that policy with one digest; per-scale choices cannot be selected
-after seeing their results.
+A recipe is a scaling policy: one file with shared settings and per-scale
+overrides, identified by one digest. The whole policy is committed before any
+of its runs, so per-scale choices cannot be selected after seeing their
+results; changing any scale's settings creates a new entry.
 
 The default required seeds are `0`, `1`, and `2`. An entry needs one accepted
 result for every required seed at every currently active scale to qualify for

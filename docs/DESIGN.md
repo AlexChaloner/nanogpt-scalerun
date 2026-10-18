@@ -75,11 +75,12 @@ identity differs from an official contest. Official runs retain clean-source
 and frozen-config requirements. A familiar development loop must not turn
 uncalibrated experiments into ranked competition evidence.
 
-Recipe settings make small experiments practical. The bundled trainer uses
-the same fixed recipe at every scale, with its canonical SHA-256 recorded in
-each result and checked across the entry. A future trainer can support a
-scale-dependent policy if the full policy is committed before the experiments
-and every run identifies the same frozen policy digest.
+A recipe is a scaling policy. Schema 2 has shared `model` and `training`
+settings plus per-scale overrides; schema 1 uses one fixed configuration at
+every scale. The canonical SHA-256 of the whole policy is recorded in each
+result and checked across the entry. Every scale's settings are validated
+before any run starts, so a broken large-scale setting fails at the first
+small run.
 
 ## Estimated FLOPs are a proxy
 

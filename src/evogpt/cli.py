@@ -164,7 +164,7 @@ def demo(output):
     config = {
         "schema_version": 1, "contest_id": "evogpt-synthetic-demo",
         "dataset_id": "synthetic-demo-no-real-training",
-        "scales": [{"id": f"s{i}", "max_flops": 10 ** (10 + i),
+        "scales": [{"id": f"s{i}", "max_flops": 10 ** (15 + i),
                     "baseline_loss": 5.0 - i * 0.5, "baseline_is_fixture": True}
                    for i in range(5)],
         "initial_scale_count": 2, "top_n": 2, "seeds": [0, 1, 2],

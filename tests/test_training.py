@@ -15,8 +15,10 @@ from unittest.mock import patch
 
 from evogpt.training import (
     _evaluate, estimate_step_flops, prepare_data, sha256_file,
-    train_run, validate_recipe, get_lr, TrainingInterrupted, load_data_manifest,
+    train_run, validate_recipe, resolve_recipe, get_lr, TrainingInterrupted, load_data_manifest,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def tiny_recipe() -> dict:
@@ -28,6 +30,14 @@ def tiny_recipe() -> dict:
             "beta1": 0.9, "beta2": 0.95, "grad_clip": 1.0,
             "device": "cpu", "log_interval": 1, "eval_batch_size": 2,
         },
+    }
+
+
+def tiny_policy() -> dict:
+    recipe = tiny_recipe()
+    return {
+        "schema_version": 2, "model": recipe["model"], "training": recipe["training"],
+        "scales": {"next": {"model": {"n_embd": 16, "n_head": 2}, "training": {"learning_rate": 0.0005}}},
     }
 
 
@@ -102,6 +112,34 @@ class PrepareDataTests(unittest.TestCase):
                 recipe = tiny_recipe()
                 recipe["training"].update(options)
                 validate_recipe(recipe)
+
+    def test_scaling_policy_overrides_shared_settings_per_scale(self) -> None:
+        policy = tiny_policy()
+        small, small_training = validate_recipe(resolve_recipe(policy, "tiny", ["tiny", "next"]))
+        large, large_training = validate_recipe(resolve_recipe(policy, "next", ["tiny", "next"]))
+        self.assertEqual((small["n_embd"], small_training["learning_rate"]), (8, 0.001))
+        self.assertEqual((large["n_embd"], large["n_head"], large_training["learning_rate"]), (16, 2, 0.0005))
+        self.assertEqual(large["context_length"], small["context_length"])
+        fixed = tiny_recipe()
+        self.assertIs(resolve_recipe(fixed, "next"), fixed)
+
+    def test_scaling_policy_rejects_unknown_scales_and_fields(self) -> None:
+        policy = tiny_policy()
+        with self.assertRaisesRegex(ValueError, "unknown scales"):
+            resolve_recipe(policy, "tiny", ["tiny"])
+        policy["scales"]["next"]["optimizer"] = {}
+        with self.assertRaisesRegex(ValueError, "only model and training"):
+            resolve_recipe(policy, "next", ["tiny", "next"])
+        del policy["scales"]
+        with self.assertRaisesRegex(ValueError, "schema_version=2"):
+            resolve_recipe(policy, "tiny")
+
+    def test_baseline_policy_grows_with_every_production_budget(self) -> None:
+        policy = json.loads((ROOT / "examples/baseline.json").read_text())
+        scale_ids = [scale["id"] for scale in json.loads((ROOT / "configs/contest.json").read_text())["scales"]]
+        widths = [validate_recipe(resolve_recipe(policy, scale_id, scale_ids))[0]["n_embd"] for scale_id in scale_ids]
+        self.assertEqual(widths, sorted(set(widths)))
+        self.assertEqual(set(policy["scales"]), set(scale_ids))
 
     def test_warmup_and_cosine_reach_expected_endpoints(self) -> None:
         recipe = tiny_recipe()
@@ -182,6 +220,22 @@ class TrainingTests(unittest.TestCase):
         first_state = torch.load(self.root / "run-a/model.pt", weights_only=True)
         second_state = torch.load(self.root / "run-b/model.pt", weights_only=True)
         self.assertTrue(all(torch.equal(first_state[name], second_state[name]) for name in first_state))
+
+    def test_scaling_policy_trains_its_model_for_each_scale(self) -> None:
+        policy = tiny_policy()
+        small = train_run(self.config, policy, self.data, "tiny", 42, self.root / "policy-tiny", "tiny-byte", "a" * 40)
+        large = train_run(self.config, policy, self.data, "next", 42, self.root / "policy-next", "tiny-byte", "a" * 40)
+        self.assertEqual(small["recipe_sha256"], large["recipe_sha256"])
+        manifests = [json.loads((self.root / name / "run_manifest.json").read_text()) for name in ("policy-tiny", "policy-next")]
+        self.assertLess(manifests[0]["parameter_count"], manifests[1]["parameter_count"])
+        self.assertLessEqual(large["train_flops"], self.config["scales"][1]["max_flops"])
+
+    def test_scaling_policy_checks_every_scale_before_training(self) -> None:
+        policy = tiny_policy()
+        policy["scales"]["next"]["model"]["n_head"] = 3
+        with self.assertRaisesRegex(ValueError, "divisible"):
+            train_run(self.config, policy, self.data, "tiny", 42, self.root / "broken", "tiny-byte", "a" * 40)
+        self.assertFalse((self.root / "broken").exists())
 
     def test_refuses_budget_that_cannot_fit_one_update(self) -> None:
         self.config["scales"][0]["max_flops"] = self.step_flops - 1

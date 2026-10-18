@@ -58,11 +58,11 @@ supported settings, compatibility limits, and what still needs building.
 
 | Scale | Estimated training FLOPs | Opens |
 | --- | ---: | --- |
-| `s0` | 10¹⁰ | Initially |
-| `s1` | 10¹¹ | Initially |
-| `s2` | 10¹² | After the first promotion |
-| `s3` | 10¹³ | After the second promotion |
-| `s4` | 10¹⁴ | After the third promotion |
+| `s0` | 10¹⁵ | Initially |
+| `s1` | 10¹⁶ | Initially |
+| `s2` | 10¹⁷ | After the first promotion |
+| `s3` | 10¹⁸ | After the second promotion |
+| `s4` | 10¹⁹ | After the third promotion |
 
 At each scale, average validation loss over seeds `0`, `1`, and `2`, then score
 the relative reduction from a frozen baseline:
@@ -132,15 +132,21 @@ git commit -m "Configure dataset and launch time for season one"
 REFERENCE_REVISION=$(git rev-parse HEAD)
 
 evogpt train --config configs/season-uncalibrated.json \
-  --recipe examples/recipe.json --data data --scale s0 --seed 0 \
+  --recipe examples/baseline.json --data data --scale s0 --seed 0 \
   --recipe-id baseline --revision "$REFERENCE_REVISION" \
   --output runs/reference/s0/0
 ```
 
 Each run writes a checkpoint, a training log, a provenance manifest, and a
-`result.json`. The default recipe selects CUDA when available and otherwise
+`result.json`. The baseline recipe selects CUDA when available and otherwise
 uses the CPU. The larger budgets can be expensive; one small run is enough to
 check your setup, but is not enough to calibrate or rank a competition.
+
+A recipe is a scaling policy: shared `model` and `training` settings plus
+per-scale overrides under `scales`. The baseline in `examples/baseline.json`
+grows from about 2M parameters at `s0` to about 290M at `s4`, at roughly 20
+training tokens per parameter. Its top scale trains on about 5B byte tokens,
+so the training split should be at least that large to avoid repeating data.
 
 Collect the reference recipe at **all five scales and all three seeds**, using
 a separate output directory for every run. Keep its source revision fixed.

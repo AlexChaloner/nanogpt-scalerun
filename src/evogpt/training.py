@@ -151,10 +151,36 @@ def _finite_number(value: Any, name: str, *, minimum: float = 0.0, exclusive: bo
     return float(value)
 
 
+def resolve_recipe(recipe: dict[str, Any], scale_id: str, scale_ids: list[str] | None = None) -> dict[str, Any]:
+    """Return the schema-1 recipe a scaling policy uses at one scale.
+
+    A schema-2 policy has shared model/training settings plus per-scale
+    overrides. The whole policy is one entry digest; overrides cannot be
+    chosen later without changing it.
+    """
+    if not isinstance(recipe, dict) or type(recipe.get("schema_version")) is not int or recipe["schema_version"] != 2:
+        return recipe
+    if set(recipe) != {"schema_version", "model", "training", "scales"}:
+        raise ValueError("scaling policy requires schema_version=2, model, training, and scales")
+    base_model, base_training, scales = recipe["model"], recipe["training"], recipe["scales"]
+    if not isinstance(base_model, dict) or not isinstance(base_training, dict) or not isinstance(scales, dict):
+        raise ValueError("scaling policy model, training, and scales must be objects")
+    if scale_ids is not None and set(scales) - set(scale_ids):
+        raise ValueError(f"scaling policy names unknown scales: {sorted(set(scales) - set(scale_ids))}")
+    override = scales.get(scale_id, {})
+    if not isinstance(override, dict) or set(override) - {"model", "training"} or not all(isinstance(value, dict) for value in override.values()):
+        raise ValueError(f"scaling policy override for {scale_id} may contain only model and training objects")
+    return {
+        "schema_version": 1,
+        "model": {**base_model, **override.get("model", {})},
+        "training": {**base_training, **override.get("training", {})},
+    }
+
+
 def validate_recipe(recipe: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Reject ignored/misspelled settings, applying documented optional defaults."""
     if not isinstance(recipe, dict) or set(recipe) != {"schema_version", "model", "training"} or type(recipe["schema_version"]) is not int or recipe["schema_version"] != 1:
-        raise ValueError("recipe requires schema_version=1, model, and training")
+        raise ValueError("recipe requires schema_version=1, model, and training (or a schema_version=2 scaling policy)")
     model, training = recipe["model"], recipe["training"]
     model_fields = {"n_layer", "n_head", "n_embd", "context_length", "dropout"}
     model_defaults = {"vocab_size": 256, "bias": True}
@@ -331,10 +357,14 @@ def train_run(
     from .datasets import open_tokens
 
     contest = parse_config(config)
-    model_config, training = validate_recipe(recipe)
     scale = next((item for item in contest.scales if item.id == scale_id), None)
     if scale is None:
         raise ValueError(f"unknown scale: {scale_id}")
+    # Check every scale now, so a broken large-scale setting fails before small runs.
+    scale_ids = [item.id for item in contest.scales]
+    for other in scale_ids:
+        validate_recipe(resolve_recipe(recipe, other, scale_ids))
+    model_config, training = validate_recipe(resolve_recipe(recipe, scale_id, scale_ids))
     if type(seed) is not int or seed not in config["seeds"]:
         raise ValueError("seed must be one of the contest's required seeds")
     if not isinstance(recipe_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,63}", recipe_id):

@@ -4,8 +4,8 @@
     python bench.py --device=cuda --dtype=bfloat16 --compile=True
 
 This measures model updates on one fixed random batch. It does not write a
-checkpoint or submit a competition result. Reported TFLOPs/s uses EvoGPT's
-analytic training FLOPs proxy, not a hardware profiler or utilization metric.
+checkpoint or submit a competition result. Reported TFLOPs/s uses the same
+counted FLOPs as competition runs, not a hardware profiler or utilization metric.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import time
 import torch
 
 from model import GPT, GPTConfig
-from evogpt.training import estimate_step_flops
+from evogpt.training import FLOP_COUNTER, count_flops
 
 
 def _boolean(value: str) -> bool:
@@ -66,19 +66,21 @@ def benchmark(args: argparse.Namespace) -> dict:
     x = torch.randint(config.vocab_size, (args.batch_size, config.block_size), device=device)
     y = torch.randint(config.vocab_size, x.shape, device=device)
 
-    def update() -> torch.Tensor:
+    def update(network=model) -> torch.Tensor:
         optimizer.zero_grad(set_to_none=True)
         precision = (
             nullcontext() if args.dtype == "float32"
             else torch.autocast(device_type=device.type, dtype=getattr(torch, args.dtype))
         )
         with precision:
-            _, loss = model(x, y)
+            _, loss = network(x, y)
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         return loss.detach()
 
+    # Count one eager update; compiled kernels do the same arithmetic.
+    step_flops = count_flops(torch, lambda: update(raw_model))
     for _ in range(args.warmup_iters):
         update()
     if device.type == "cuda":
@@ -92,11 +94,6 @@ def benchmark(args: argparse.Namespace) -> dict:
     last_loss = float(loss.item())
     if not math.isfinite(last_loss):
         raise RuntimeError("benchmark training produced a nonfinite loss")
-    step_flops = estimate_step_flops(
-        parameter_count,
-        {"context_length": config.block_size, "n_layer": config.n_layer, "n_embd": config.n_embd},
-        args.batch_size,
-    )
     return {
         "device": str(device), "dtype": args.dtype, "compile": args.compile,
         "model": asdict(config), "batch_size": args.batch_size,
@@ -104,9 +101,9 @@ def benchmark(args: argparse.Namespace) -> dict:
         "warmup_iters": args.warmup_iters, "measured_iters": args.max_iters,
         "elapsed_seconds": elapsed, "ms_per_update": 1000 * elapsed / args.max_iters,
         "tokens_per_second": args.batch_size * config.block_size * args.max_iters / elapsed,
-        "estimated_training_tflops": step_flops * args.max_iters / elapsed / 1e12,
-        "estimated_flops_per_update": step_flops,
-        "flops_proxy": "6 * P * B * T + 12 * L * B * T * T * D; analytic estimate, not measured hardware FLOPs",
+        "counted_training_tflops": step_flops * args.max_iters / elapsed / 1e12,
+        "counted_flops_per_update": step_flops,
+        "flop_counter": FLOP_COUNTER["name"],
         "timing_scope": "forward, loss, backward and AdamW on a fixed synthetic batch; warmup and data loading excluded",
         "last_loss": last_loss,
     }

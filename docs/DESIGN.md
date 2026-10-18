@@ -82,38 +82,38 @@ result and checked across the entry. Every scale's settings are validated
 before any run starts, so a broken large-scale setting fails at the first
 small run.
 
-## Estimated FLOPs are a proxy
+## Counted FLOPs
 
-For a batch size `B`, context length `T`, parameter count `P`, layer count `L`,
-and embedding width `D`, the estimator charges each optimizer update:
+A formula written for one architecture misprices the next one, and charging
+nothing for the optimizer makes optimizer-side matmuls free. So the trainer
+counts what executes. Before a run, it builds a throwaway copy of the model
+and runs one eager microbatch (forward and backward) and one optimizer step
+under PyTorch's `FlopCounterMode`, on the run's device and dtype:
 
 ```text
-estimated_training_flops = accumulation_steps × (
-                            6 × P × B × T + 12 × L × B × T² × D)
+update_flops = accumulation_steps × microbatch_flops + optimizer_step_flops
 ```
 
-The first term approximates dense forward/backward work and the second charges
-the sequence-length-dependent attention products. `P` includes all parameters
-in the bundled model. `B` is microbatch size; gradient accumulation charges
-every microbatch before an optimizer update. Every executed update uses this
-same charge. Optimizer
-operations and evaluation are excluded.
+Every update has the same shapes, so one counted update prices them all. The
+probe uses zero tokens because counts depend only on shapes. It runs before
+the seed is reset, so it does not change the run's initialization.
 
-The trainer stops at an explicit estimate of training arithmetic. This is
-useful for a reproducible starter competition, but an estimated FLOP count is
-not an accelerator profiler.
+The counter prices matrix multiplies, attention and convolutions; a
+multiply-add is two FLOPs. PyTorch 2.6 has no formula for CPU attention, so
+EvoGPT registers the CUDA formula for it and both devices charge the same
+attention work. Counts still follow the kernel that runs: attention dropout
+selects a different kernel and changes the count slightly.
 
-The estimate does not account for memory bandwidth, communication, compiler
-fusion, utilization, elapsed time, energy use, or optimizer operations.
-Validation is outside the training budget. Two models with the same estimated
-FLOPs can have different wall-clock costs, and a new
-architecture can invalidate assumptions in the estimator.
+Two kinds of work would otherwise be free, so training refuses them:
+matmul-like operations without a formula, and operators outside ATen, such as
+custom kernels registered with PyTorch. Code that bypasses PyTorch dispatch is
+invisible to any dispatch-level counter; review must reject it.
 
-Treat the default estimator as the policy for the provided baseline family.
-Before accepting arbitrary model families, define the operations counted,
-precision policy, forward/backward accounting, optimizer and auxiliary work,
-and an independently reviewable measurement method. Changing that policy
-starts a new competition configuration.
+Elementwise, normalization and reduction work is not charged, and neither is
+memory: lookup tables add capacity at almost no counted cost. The count does
+not reflect memory bandwidth, utilization, elapsed time or energy. Validation
+is outside the training budget. Changing the counting policy starts a new
+competition configuration.
 
 ## Weekly automation
 

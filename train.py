@@ -19,7 +19,7 @@ from evogpt import core
 from evogpt.cli import read_json, source_revision, write_json
 from evogpt.datasets import load_manifest, open_tokens
 from evogpt.training import (
-    TrainingInterrupted, _evaluate, estimate_step_flops, sha256_file,
+    TrainingInterrupted, _evaluate, _torch, measure_update_flops, sha256_file,
     train_run, validate_recipe,
 )
 
@@ -48,18 +48,16 @@ def build_recipe(settings, manifest):
 
 
 def local_config(settings, manifest, recipe):
-    import torch
-    from evogpt.model import ByteGPT
-
     if settings["max_iters"] < 1:
         raise ValueError("max_iters must be positive")
-    # Construction is on CPU and train_run resets the seed before initialization.
-    model = ByteGPT(**recipe["model"])
-    parameters = sum(parameter.numel() for parameter in model.parameters())
-    step_flops = estimate_step_flops(parameters, recipe["model"], settings["batch_size"],
-                                     settings["gradient_accumulation_steps"])
-    del model
-    budget = step_flops * settings["max_iters"]
+    # The budget is max_iters counted updates; train_run counts the same update
+    # again on its own device and resets the seed before initialization.
+    torch = _torch()
+    model_config, training = validate_recipe(recipe)
+    device = training["device"]
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    budget = measure_update_flops(torch, model_config, training, device) * settings["max_iters"]
     scale_id = settings["scale"]
     second_id = "next" if scale_id != "next" else "next-scale"
     return {

@@ -1,7 +1,8 @@
 """Byte data preparation and a budgeted, optional PyTorch training baseline.
 
-The FLOPs counter is an analytic *proxy*, not a hardware profiler. Its definition
-is versioned here so that runs use the same budget accounting at every scale.
+Training FLOPs are counted from the operations an update actually executes,
+using PyTorch's FLOP counter. The counting policy is versioned here so that
+runs use the same budget accounting at every scale.
 """
 
 from __future__ import annotations
@@ -26,13 +27,13 @@ from uuid import uuid4
 
 
 TOKENIZER = {"name": "utf8-bytes", "version": 1, "vocab_size": 256}
-FLOPS_PROXY = {
-    "name": "dense-parameters-plus-attention-v1",
-    "formula": "(6 * P * B * T + 12 * L * B * T * T * D) * A * W per optimizer update",
-    "definitions": "P=unique trainable parameters, B=microbatch size, T=context length, L=layers, D=embedding width, A=gradient accumulation steps, W=world size",
-    "includes": "Approximate dense parameter forward/backward work and attention QK/AV forward/backward matmuls; multiply-add counts as two FLOPs.",
-    "excludes": "Optimizer, normalization, activations, data loading, evaluation, and actual kernel/hardware behavior. Embeddings are approximated as dense parameters.",
+FLOP_COUNTER = {
+    "name": "torch-flop-counter-v1",
+    "method": "PyTorch FlopCounterMode on one eager microbatch (forward and backward) and one optimizer step, using the run's model, device and dtype. Update FLOPs = accumulation steps x microbatch FLOPs + optimizer FLOPs.",
+    "includes": "Matrix multiplies, attention and convolutions wherever they run, including the optimizer; multiply-add counts as two FLOPs. CPU attention uses the same formula as CUDA attention.",
+    "excludes": "Elementwise, normalization and reduction work, data loading, and evaluation. Training refuses matmul-like or non-ATen operations that have no counting formula.",
 }
+_MATMUL_LIKE = re.compile(r"mm|matmul|attention|conv|einsum|linear|^(dot|vdot|mv|addmv|tensordot|ger|outer)$")
 
 
 def _canonical(value: Any) -> bytes:
@@ -242,18 +243,88 @@ def _torch() -> Any:
     return torch
 
 
-def estimate_step_flops(
-    parameter_count: int, model: dict[str, Any], batch_size: int,
-    gradient_accumulation_steps: int = 1, world_size: int = 1,
-) -> int:
-    """Integer dense-matmul proxy for all microbatches in one update."""
-    _positive_int(gradient_accumulation_steps, "gradient_accumulation_steps")
-    _positive_int(world_size, "world_size")
-    context = model["context_length"]
-    return (
-        6 * parameter_count * batch_size * context
-        + 12 * model["n_layer"] * batch_size * context * context * model["n_embd"]
-    ) * gradient_accumulation_steps * world_size
+def _flop_counter(torch: Any) -> Any:
+    """PyTorch's counter, with CPU attention priced like CUDA attention."""
+    from torch.utils import flop_counter
+    aten = torch.ops.aten
+    if aten._scaled_dot_product_flash_attention_for_cpu not in flop_counter.flop_registry:
+        @flop_counter.register_flop_formula(aten._scaled_dot_product_flash_attention_for_cpu)
+        def _cpu_attention(query_shape, key_shape, value_shape, *args, out_shape=None, **kwargs):
+            return flop_counter.sdpa_flop_count(query_shape, key_shape, value_shape)
+
+    if aten._scaled_dot_product_flash_attention_for_cpu_backward not in flop_counter.flop_registry:
+        @flop_counter.register_flop_formula(aten._scaled_dot_product_flash_attention_for_cpu_backward)
+        def _cpu_attention_backward(grad_out_shape, query_shape, key_shape, value_shape, *args, out_shape=None, **kwargs):
+            return flop_counter.sdpa_backward_flop_count(grad_out_shape, query_shape, key_shape, value_shape)
+    return flop_counter
+
+
+def count_flops(torch: Any, function: Any) -> int:
+    """Run function once and return the FLOPs its PyTorch operations execute.
+
+    Work that the counter cannot price is refused instead of being free:
+    matmul-like operations without a formula and operations outside ATen,
+    such as custom kernels registered as PyTorch operators.
+    """
+    from torch.utils._python_dispatch import TorchDispatchMode
+    flop_counter = _flop_counter(torch)
+    seen: set[Any] = set()
+
+    class OperationLog(TorchDispatchMode):
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            seen.add(func.overloadpacket)
+            return func(*args, **(kwargs or {}))
+
+    counter = flop_counter.FlopCounterMode(display=False)
+    with counter, OperationLog():
+        function()
+    unpriced = sorted(
+        str(op) for op in seen if op not in flop_counter.flop_registry
+        and (not str(op).startswith(("aten.", "prims.", "profiler.")) or _MATMUL_LIKE.search(str(op).split(".", 1)[1]))
+    )
+    if unpriced:
+        raise ValueError(f"cannot count FLOPs for operations without a formula: {', '.join(unpriced)}")
+    return int(counter.get_total_flops())
+
+
+def _microbatch(torch: Any, model: Any, x: Any, y: Any, training: dict[str, Any], device: str, scaler: Any) -> float:
+    """Forward and backward for one microbatch; returns its training loss."""
+    with _autocast(torch, device, training["dtype"]):
+        logits = model(x)
+        loss = torch.nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), y.reshape(-1))
+    loss_value = float(loss.item())
+    if not math.isfinite(loss_value):
+        raise ValueError("training loss is not finite")
+    scaler.scale(loss / training["gradient_accumulation_steps"]).backward()
+    return loss_value
+
+
+def _optimizer_step(torch: Any, raw_model: Any, optimizer: Any, scaler: Any, training: dict[str, Any]) -> None:
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(raw_model.parameters(), training["grad_clip"] or math.inf, error_if_nonfinite=True)
+    scaler.step(optimizer)
+    scaler.update()
+
+
+def measure_update_flops(torch: Any, model_config: dict[str, Any], training: dict[str, Any], device: str) -> int:
+    """Count one full update by running it on a throwaway copy of the model.
+
+    Microbatches have one shape, so one is counted and charged once per
+    accumulation step; the optimizer step is counted once per update.
+    The probe uses the global RNG; callers seed afterwards.
+    """
+    from .model import ByteGPT
+    probe = ByteGPT(**model_config).to(device)
+    optimizer = probe.configure_optimizers(training["weight_decay"], training["learning_rate"], (training["beta1"], training["beta2"]), device)
+    scaler = torch.amp.GradScaler("cuda", enabled=training["dtype"] == "float16")
+    tokens = torch.zeros((training["batch_size"], model_config["context_length"] + 1), dtype=torch.long, device=device)
+    probe.train()
+    microbatch = count_flops(torch, lambda: _microbatch(torch, probe, tokens[:, :-1], tokens[:, 1:], training, device, scaler))
+    step = count_flops(torch, lambda: _optimizer_step(torch, probe, optimizer, scaler, training))
+    del probe, optimizer
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    return training["gradient_accumulation_steps"] * microbatch + step
 
 
 def _batch(torch: Any, data: Any, starts: list[int], length: int, device: str) -> tuple[Any, Any]:
@@ -406,13 +477,14 @@ def train_run(
         raise ValueError("float16 training requires CUDA; use float32 or bfloat16 on CPU")
     if training["dtype"] == "bfloat16" and device == "cuda" and not torch.cuda.is_bf16_supported():
         raise ValueError("this CUDA device does not support bfloat16")
+    step_flops = measure_update_flops(torch, model_config, training, device)
+    torch.manual_seed(seed)
     raw_model = ByteGPT(**model_config).to(device)
     parameter_count = sum(parameter.numel() for parameter in raw_model.parameters())
     accumulation = training["gradient_accumulation_steps"]
-    step_flops = estimate_step_flops(parameter_count, model_config, training["batch_size"], accumulation)
     total_updates = scale.max_flops // step_flops
     if not total_updates:
-        raise ValueError(f"scale budget {scale.max_flops} cannot fit one update ({step_flops} proxy FLOPs)")
+        raise ValueError(f"scale budget {scale.max_flops} cannot fit one update ({step_flops} counted FLOPs)")
     get_lr(0, training, total_updates)
     optimizer = raw_model.configure_optimizers(training["weight_decay"], training["learning_rate"], (training["beta1"], training["beta2"]), device)
     scaler = torch.amp.GradScaler("cuda", enabled=training["dtype"] == "float16")
@@ -423,7 +495,7 @@ def train_run(
         "dataset_id": data_manifest["dataset_id"], "revision": revision,
         "scale_id": scale_id, "seed": seed, "recipe_id": recipe_id,
         "device": device, "step_flops": step_flops, "max_flops": scale.max_flops,
-        "flops_proxy": FLOPS_PROXY, "model_args": _checkpoint_model_args(model_config),
+        "flop_counter": FLOP_COUNTER, "model_args": _checkpoint_model_args(model_config),
     }
     train_flops = train_tokens = step = 0
     log_path = output_dir / "train.jsonl"
@@ -485,7 +557,7 @@ def train_run(
             "scale_id": scale_id, "recipe_id": recipe_id,
             "framework": {"name": "torch", "version": str(torch.__version__), "device": device, "dtype": training["dtype"], "compile": training["compile"]},
             "parameter_count": parameter_count, "step_flops": step_flops,
-            "flops_proxy": FLOPS_PROXY, "steps": step,
+            "flop_counter": FLOP_COUNTER, "steps": step,
             "train_flops": train_flops, "train_tokens": train_tokens,
             "gradient_accumulation_steps": accumulation, "world_size": 1,
             "log_sha256": sha256_file(log_path), "ckpt_sha256": sha256_file(checkpoint_path),
@@ -504,18 +576,8 @@ def train_run(
                 for _ in range(accumulation):
                     starts = torch.randint(len(train_data) - context, (training["batch_size"],), generator=generator).tolist()
                     x, y = _batch(torch, train_data, starts, context, device)
-                    with _autocast(torch, device, training["dtype"]):
-                        logits = model(x)
-                        loss = torch.nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), y.reshape(-1))
-                    loss_value = float(loss.item())
-                    if not math.isfinite(loss_value):
-                        raise ValueError("training loss is not finite")
-                    loss_sum += loss_value
-                    scaler.scale(loss / accumulation).backward()
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(raw_model.parameters(), training["grad_clip"] or math.inf, error_if_nonfinite=True)
-                scaler.step(optimizer)
-                scaler.update()
+                    loss_sum += _microbatch(torch, model, x, y, training, device, scaler)
+                _optimizer_step(torch, raw_model, optimizer, scaler, training)
                 step += 1
                 train_flops += step_flops
                 update_tokens = training["batch_size"] * context * accumulation
@@ -567,7 +629,7 @@ def train_run(
         "dataset": data_manifest, "revision": revision, "seed": seed,
         "framework": {"name": "torch", "version": str(torch.__version__), "device": device, "dtype": training["dtype"], "compile": training["compile"]},
         "parameter_count": parameter_count, "step_flops": step_flops,
-        "flops_proxy": FLOPS_PROXY, "steps": step,
+        "flop_counter": FLOP_COUNTER, "steps": step,
         "gradient_accumulation_steps": accumulation, "world_size": 1,
         "eval_tokens": eval_tokens, "validation": "all next-token pairs once, fixed windows, token-weighted cross entropy in nats",
         "artifact_sha256": result["artifact_sha256"], "log_sha256": result["log_sha256"],

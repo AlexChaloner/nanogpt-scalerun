@@ -19,13 +19,13 @@ A competition configuration fixes:
 - The required seeds, promotion count, and week length.
 
 The submitted source revision and recipe identify the evaluation settings and
-compute estimator. The bundled trainer's evaluation and estimator are
+FLOP counter. The bundled trainer's evaluation and FLOP counter are
 described in [the design document](DESIGN.md); maintainers must review any
 implementation that changes these policies.
 
 The default budgets are:
 
-| Scale | Maximum estimated training FLOPs | Relative budget |
+| Scale | Maximum training FLOPs | Relative budget |
 | --- | ---: | ---: |
 | S0 | 1,000,000,000,000,000 | 1× |
 | S1 | 10,000,000,000,000,000 | 10× |
@@ -145,10 +145,11 @@ measurements.
 
 ## 5. Compute accounting
 
-The bundled trainer uses a documented **estimated FLOPs proxy**. It does not
-profile executed accelerator instructions, measure GPU utilization, or enforce
-equal wall-clock time. The proxy gives the starter implementation an explicit,
-reproducible budget rule; see [the design document](DESIGN.md) for its limits.
+Training FLOPs are **counted from executed PyTorch operations**: matrix
+multiplies, attention and convolutions, including any in the optimizer. Each
+update is charged the count of one probe update; see
+[the design document](DESIGN.md) for how and for its limits. The count is not
+wall-clock time or GPU utilization.
 
 Every training step must fit within its scale's budget. Training stops before
 the next whole step would exceed that cap. Evaluation is deterministic and
@@ -156,11 +157,11 @@ uses the same held-out bytes and evaluation policy for every compared run.
 Preparation rejects identical files and complete-file containment. Checking
 for partial or semantic overlap remains a dataset curation responsibility.
 
-For a serious open competition, freeze an accounting policy that covers model
-changes, optimizer updates, auxiliary networks, search or preprocessing work,
-and any other material training cost. A participant must not relabel expensive
-work as free preprocessing. Extending the starter proxy to a substantially
-different architecture requires review before results are comparable.
+Submissions must run their training arithmetic through PyTorch operations the
+counter can see. Training refuses matmul-like or custom operators without a
+counting formula; code that bypasses PyTorch dispatch, auxiliary networks,
+search, and preprocessing that does training work are not allowed. A
+participant must not relabel expensive work as free preprocessing.
 
 ## 6. Reproducibility and review
 

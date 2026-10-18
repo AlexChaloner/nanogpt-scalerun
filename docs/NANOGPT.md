@@ -113,9 +113,9 @@ python bench.py --device=cpu --max_iters=5 --warmup_iters=1 --num_threads=4
 ```
 
 `bench.py` reports JSON with milliseconds per update, tokens per second,
-and estimated TFLOPs/s. It times forward, loss, backward, and AdamW on a fixed
-synthetic batch; warmup and data loading are excluded. Estimated TFLOPs/s
-uses the same analytic proxy as training. MFU reporting and distributed
+and counted TFLOPs/s. It times forward, loss, backward, and AdamW on a fixed
+synthetic batch; warmup and data loading are excluded. Counted TFLOPs/s
+uses the same FLOP counter as training. MFU reporting and distributed
 profiling remain future work.
 
 `--init_from=resume` continues an interrupted run from its checkpoint. Keep
@@ -200,7 +200,7 @@ time to a target FineWeb validation loss on specified hardware. Its
 streams, require evidence across repeated runs, and compare records on the
 same hardware.
 
-EvoGPT instead measures validation loss at several estimated training FLOPs
+EvoGPT instead measures validation loss at several counted training FLOPs
 budgets and ranks the weakest normalized score. It does not inherit FineWeb
 scores, timing records, Muon/FP8 optimizations, or speedrun submission
 compatibility. Useful future work includes a pinned curated corpus,

@@ -40,7 +40,7 @@ To measure synthetic training throughput, run:
 python bench.py --device=cpu --max_iters=5 --warmup_iters=1 --num_threads=4
 ```
 
-This reports time per update, tokens per second, and estimated TFLOPs/s for
+This reports time per update, tokens per second, and counted TFLOPs/s for
 the model and optimizer. It excludes data loading and writes no competition
 result.
 
@@ -56,7 +56,7 @@ supported settings, compatibility limits, and what still needs building.
 
 ## The competition
 
-| Scale | Estimated training FLOPs | Opens |
+| Scale | Training FLOPs | Opens |
 | --- | ---: | --- |
 | `s0` | 10¹⁵ | Initially |
 | `s1` | 10¹⁶ | Initially |
@@ -204,23 +204,30 @@ that submitted training happened; review and replication remain necessary.
 
 ## Compute accounting
 
-The reference trainer uses an **analytic FLOPs proxy**, not hardware profiling:
+FLOPs are **counted from the operations training executes**. Before training,
+the trainer runs one microbatch and one optimizer step on a throwaway copy of
+the model under PyTorch's FLOP counter, then charges every update:
 
 ```text
-FLOPs per update = gradient_accumulation_steps × (
-                    6 × parameters × batch_size × context_length
-                  + 12 × layers × batch_size × context_length² × embedding_width)
+FLOPs per update = gradient_accumulation_steps × counted microbatch FLOPs
+                 + counted optimizer-step FLOPs
 ```
 
-Every full training update must fit within the scale's budget. The trainer
-stops before the next update would exceed it. Optimizer work and validation
-are excluded. Fixed validation windows cover each held-out next-token target
-once; their losses are weighted by token count. The byte track evaluates bytes;
-character and GPT-2 token tracks have separate dataset identities and losses.
+Matrix multiplies, attention and convolutions count wherever they run,
+including inside the optimizer, so a new architecture or optimizer is priced
+without a hand-written formula. Elementwise and normalization work is free.
+Training refuses matmul-like operations the counter cannot price, and custom
+operators outside PyTorch's core library. Work that bypasses PyTorch entirely
+is invisible to the counter and is not allowed in submissions.
 
-The proxy is suitable for the provided baseline family. New architectures
-need an explicit reviewed accounting policy before their counts can be
-compared. Equal estimated FLOPs do not imply equal GPU time or energy use.
+Every full training update must fit within the scale's budget. The trainer
+stops before the next update would exceed it. Validation is excluded. Fixed
+validation windows cover each held-out next-token target once; their losses
+are weighted by token count. The byte track evaluates bytes; character and
+GPT-2 token tracks have separate dataset identities and losses.
+
+FLOPs do not price memory. Large lookup tables add capacity at almost no
+counted cost, and equal FLOPs do not imply equal GPU time or energy use.
 
 ## Automation and development
 

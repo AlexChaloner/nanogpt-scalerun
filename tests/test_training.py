@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from evogpt.training import (
-    _evaluate, estimate_step_flops, prepare_data, sha256_file,
+    _evaluate, count_flops, measure_update_flops, prepare_data, sha256_file,
     train_run, validate_recipe, resolve_recipe, get_lr, TrainingInterrupted, load_data_manifest,
 )
 
@@ -152,11 +152,6 @@ class PrepareDataTests(unittest.TestCase):
         self.assertEqual(get_lr(10, options, 12), 0.0001)
         self.assertEqual(get_lr(11, options, 12), 0.0001)
 
-    def test_compute_includes_every_accumulated_microbatch_and_rank(self) -> None:
-        model = tiny_recipe()["model"]
-        per_microbatch = estimate_step_flops(500, model, 2)
-        self.assertEqual(estimate_step_flops(500, model, 2, 3, 4), per_microbatch * 12)
-
     def test_invalid_legacy_tokenizer_is_rejected_without_recursion(self) -> None:
         prepare_data(self.train, self.val, self.root / "out")
         path = self.root / "out/manifest.json"
@@ -181,7 +176,7 @@ class TrainingTests(unittest.TestCase):
         torch.set_num_threads(cls.previous_threads)
 
     def setUp(self) -> None:
-        from evogpt.model import ByteGPT
+        import torch
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -191,8 +186,7 @@ class TrainingTests(unittest.TestCase):
         self.data = self.root / "data"
         self.manifest = prepare_data(train, val, self.data)
         self.recipe = tiny_recipe()
-        model = ByteGPT(**self.recipe["model"])
-        self.step_flops = estimate_step_flops(sum(p.numel() for p in model.parameters()), self.recipe["model"], 2)
+        self.step_flops = measure_update_flops(torch, *validate_recipe(self.recipe), "cpu")
         self.config = tiny_contest(self.manifest["dataset_id"], self.step_flops * 2 + self.step_flops // 2)
 
     def run_training(self, destination: str) -> dict:
@@ -236,6 +230,27 @@ class TrainingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "divisible"):
             train_run(self.config, policy, self.data, "tiny", 42, self.root / "broken", "tiny-byte", "a" * 40)
         self.assertFalse((self.root / "broken").exists())
+
+    def test_counted_update_charges_every_accumulated_microbatch(self) -> None:
+        import torch
+        recipe = tiny_recipe()
+        recipe["training"]["gradient_accumulation_steps"] = 3
+        # AdamW is elementwise, so the counted optimizer step adds nothing.
+        self.assertEqual(measure_update_flops(torch, *validate_recipe(recipe), "cpu"), 3 * self.step_flops)
+
+    def test_cpu_attention_is_counted(self) -> None:
+        import torch
+        recipe = tiny_recipe()
+        recipe["model"]["context_length"] = 8
+        # Dense layers double with context; attention quadruples.
+        self.assertGreater(measure_update_flops(torch, *validate_recipe(recipe), "cpu"), 2 * self.step_flops)
+
+    def test_operations_without_a_formula_are_refused(self) -> None:
+        import torch
+        a = torch.ones(4)
+        self.assertEqual(count_flops(torch, lambda: torch.ones(2, 3) @ torch.ones(3, 4)), 2 * 2 * 3 * 4)
+        with self.assertRaisesRegex(ValueError, "aten.dot"):
+            count_flops(torch, lambda: torch.dot(a, a))
 
     def test_refuses_budget_that_cannot_fit_one_update(self) -> None:
         self.config["scales"][0]["max_flops"] = self.step_flops - 1
@@ -301,7 +316,7 @@ class TrainingTests(unittest.TestCase):
         self.assertFalse((out / "result.json").exists())
         prefix = (out / "train.jsonl").read_bytes()
         interrupted = torch.load(out / "ckpt.pt", weights_only=True)
-        self.assertEqual(interrupted["train_flops"], 2 * self.step_flops)
+        self.assertEqual(interrupted["train_flops"], measure_update_flops(torch, *validate_recipe(self.recipe), "cpu"))
         resumed = train_run(self.config, self.recipe, self.data, "tiny", 42, out,
                             "tiny-byte", "a" * 40, resume=True)
         self.assertEqual(resumed["train_flops"], uninterrupted["train_flops"])

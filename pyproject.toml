@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evogpt"
+version = "0.1.0"
+description = "A multi-scale language-model benchmark with minimax scoring and weekly successive promotion."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "EvoGPT contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+train = ["torch>=2.2,<3"]
+
+[project.scripts]
+evogpt = "evogpt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

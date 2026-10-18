@@ -4,9 +4,57 @@
 your rank.**
 
 EvoGPT takes the small, reproducible experiment style of nanoGPT and adds a
-multi-scale tournament. Recipes compete at five training-compute budgets,
-each 10× larger than the last. Every seven days, the top five eligible recipes
+multi-scale tournament. Recipes compete at five 10× training-compute scales,
+spanning four orders of magnitude. Every seven days, the top five eligible recipes
 advance to the next budget. The working name is EvoGPT.
+
+If you know [nanoGPT](https://github.com/karpathy/nanoGPT), start with the same
+prepare → train → sample loop. `model.py`, `train.py`, `sample.py`, and Python
+files under `config/` are the experiment entrypoints. The `evogpt` CLI adds
+the competition rules and result accounting.
+
+## Train a small GPT
+
+Python 3.10 or newer is required. From a repository checkout:
+
+```bash
+cd evogpt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[train]'
+
+python data/shakespeare_char/prepare.py
+python train.py config/train_shakespeare_char.py --device=cpu --compile=False
+python sample.py --out_dir=runs/out-shakespeare-char --device=cpu
+```
+
+The preparation script downloads Tiny Shakespeare from its original source;
+use `--input /path/to/input.txt` to prepare local text instead. The small
+character-level preset is suitable for a setup check on CPU. Override familiar
+settings directly, for example `--max_iters=200 --batch_size=8 --block_size=64`.
+Set `--device=cuda` for GPU training.
+
+To measure synthetic training throughput, run:
+
+```bash
+python bench.py --device=cpu --max_iters=5 --warmup_iters=1 --num_threads=4
+```
+
+This reports time per update, tokens per second, and estimated TFLOPs/s for
+the model and optimizer. It excludes data loading and writes no competition
+result.
+
+These are local experiments. They record their configuration and source
+status without requiring a clean checkout. Official competition results need
+a frozen contest, a scale, calibrated baselines, and a clean source revision;
+the workflow below provides those steps. Local experiments cannot be ranked
+against an official contest.
+
+EvoGPT preserves familiar commands while using its own trainer, dataset
+metadata, and checkpoints. See [Coming from nanoGPT](docs/NANOGPT.md) for
+supported settings, compatibility limits, and what still needs building.
+
+## The competition
 
 | Scale | Estimated training FLOPs | Opens |
 | --- | ---: | --- |
@@ -37,7 +85,7 @@ you measure them.
 
 ## Try the tournament without a GPU
 
-Python 3.10 or newer is required. The scoring and tournament tools have no
+The scoring and tournament tools have no
 runtime dependencies beyond the standard library. From a repository checkout:
 
 ```bash
@@ -60,8 +108,8 @@ Demo records and their fixture baselines stay separate from real competitions.
 ## Start a real competition
 
 Choose a dataset you can redistribute or identify reproducibly, and provide
-separate UTF-8 training and validation files. No dataset is downloaded
-automatically. The byte-level baseline needs no external tokenizer.
+separate UTF-8 training and validation files. The byte-level competition
+baseline needs no external tokenizer; `evogpt prepare` uses your local files.
 
 ```bash
 python -m pip install -e '.[train]'
@@ -153,14 +201,16 @@ that submitted training happened; review and replication remain necessary.
 The reference trainer uses an **analytic FLOPs proxy**, not hardware profiling:
 
 ```text
-FLOPs per update = 6 × parameters × batch_size × context_length
-                + 12 × layers × batch_size × context_length² × embedding_width
+FLOPs per update = gradient_accumulation_steps × (
+                    6 × parameters × batch_size × context_length
+                  + 12 × layers × batch_size × context_length² × embedding_width)
 ```
 
 Every full training update must fit within the scale's budget. The trainer
 stops before the next update would exceed it. Optimizer work and validation
-are excluded. Fixed validation windows cover each held-out next-byte target
-once; their losses are weighted by token count.
+are excluded. Fixed validation windows cover each held-out next-token target
+once; their losses are weighted by token count. The byte track evaluates bytes;
+character and GPT-2 token tracks have separate dataset identities and losses.
 
 The proxy is suitable for the provided baseline family. New architectures
 need an explicit reviewed accounting policy before their counts can be
@@ -199,5 +249,7 @@ evogpt --help
 ```
 
 Read [the competition rules](docs/RULES.md), [the design](docs/DESIGN.md), and
-[the contribution guide](CONTRIBUTING.md) for details. The code is released
+[the contribution guide](CONTRIBUTING.md) for details. Read
+[Coming from nanoGPT](docs/NANOGPT.md) for the training interface and remaining
+upstream differences. The code is released
 under the [MIT license](LICENSE).

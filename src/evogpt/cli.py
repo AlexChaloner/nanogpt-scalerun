@@ -143,7 +143,8 @@ def source_revision(recipe_path, requested):
     if requested is not None and requested != revision:
         raise ValueError("--revision must match the current Git HEAD containing the recipe")
     sources = [recipe] + [Path(__file__).resolve().parent / name
-                          for name in ("cli.py", "core.py", "training.py", "model.py")]
+                          for name in ("cli.py", "core.py", "training.py", "model.py", "datasets.py")]
+    sources += [repository / name for name in ("train.py", "configurator.py")]
     for source in sources:
         source = source.resolve()
         if not source.is_relative_to(repository):
@@ -280,6 +281,7 @@ def parser():
     train.add_argument("--recipe-id", required=True)
     train.add_argument("--revision", help="Source Git SHA; defaults to clean HEAD and must match HEAD")
     train.add_argument("--output", required=True)
+    train.add_argument("--resume", action="store_true", help="Continue this run's saved checkpoint within the same budget")
     sample = commands.add_parser("demo", help="Generate clearly marked synthetic rankings and a promotion")
     sample.add_argument("--output", default="demo-output")
     return cli
@@ -313,7 +315,7 @@ def main(argv=None):
             revision = source_revision(args.recipe, args.revision)
             _emit(train_run(config=config, recipe=read_json(args.recipe), data_dir=Path(args.data),
                             scale_id=args.scale, seed=args.seed, output_dir=Path(args.output),
-                            recipe_id=args.recipe_id, revision=revision))
+                            recipe_id=args.recipe_id, revision=revision, resume=args.resume))
         elif args.command == "calibrate":
             calibrate(args)
         else:

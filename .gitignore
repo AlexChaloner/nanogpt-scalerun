@@ -6,7 +6,13 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
-data/
+data/**
+!data/shakespeare_char/
+!data/shakespeare_char/prepare.py
+!data/shakespeare/
+!data/shakespeare/prepare.py
+!data/openwebtext/
+!data/openwebtext/prepare.py
 runs/
 demo-output/
 *.pt

@@ -1,7 +1,7 @@
 # Competition rules
 
-EvoGPT compares training recipes across five orders of magnitude of training
-compute. A recipe must work across scales: its overall score is its weakest
+EvoGPT compares training recipes at five 10× training-compute scales spanning
+four orders of magnitude. A recipe must work across scales: its overall score is its weakest
 normalized scale score. Each week, a fixed number of eligible recipes advance
 to the next compute budget.
 

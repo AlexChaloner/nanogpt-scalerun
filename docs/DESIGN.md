@@ -41,20 +41,39 @@ this separation to upload a proposal artifact for maintainer review.
 
 ## Reference trainer
 
-The bundled baseline is an original, small decoder-only GPT implementation
-inspired by the simplicity of nanoGPT. It is not a copy of nanoGPT and does not
-claim compatibility with nanoGPT checkpoints or benchmark results.
+The bundled baseline is an original decoder-only GPT implementation inspired
+by the simplicity of nanoGPT. Root `model.py`, `train.py`, `sample.py`, and
+`config/*.py` provide its familiar experiment interface. The implementation
+lives under `src/evogpt/`. `GPTConfig` and `GPT` expose common model-size names
+and return logits with an optional training loss. This interface does not
+claim compatibility with upstream checkpoints or benchmark results. See
+[Coming from nanoGPT](NANOGPT.md) for the supported subset.
 
 Byte-level tokenization avoids requiring a tokenizer download: UTF-8 input is
 represented as integer bytes in a fixed vocabulary. The training and validation
 splits are supplied as separate files. The preparation step records their
-identities so that results can be tied to the data used.
+identities so that results can be tied to the data used. Character-level and
+GPT-2 BPE preparation scripts additionally support `uint16` token streams,
+explicit tokenizer metadata, and dataset manifests. Character vocabularies
+use JSON metadata, not pickle. Tokenizer identity is part of dataset identity;
+byte, character, and BPE scores require separate calibrated competitions.
 
 Each seed controls model initialization and training sampling. Evaluation uses
 fixed validation windows and inference mode, so a run's reported loss does not
 depend on random validation sampling. Hardware and library differences can
 still affect numerical reproducibility; exact seeds are not a promise of
-bitwise-identical outputs on every device.
+bitwise-identical outputs on every device. The trainer supports gradient
+accumulation, optional learning-rate warmup and cosine decay, single-device
+mixed precision, compilation, and checkpoints that can continue the same
+run. Optimizer, dataset, recipe, and compute progress must agree when resuming;
+continuing a run does not reset its compute counter. Each competition scale
+still starts from scratch.
+
+The root training script also supports local experiments without requiring a
+clean checkout. Their metadata records source status, and their configuration
+identity differs from an official contest. Official runs retain clean-source
+and frozen-config requirements. A familiar development loop must not turn
+uncalibrated experiments into ranked competition evidence.
 
 Recipe settings make small experiments practical. The bundled trainer uses
 the same fixed recipe at every scale, with its canonical SHA-256 recorded in
@@ -68,12 +87,15 @@ For a batch size `B`, context length `T`, parameter count `P`, layer count `L`,
 and embedding width `D`, the estimator charges each optimizer update:
 
 ```text
-estimated_training_flops = 6 × P × B × T + 12 × L × B × T² × D
+estimated_training_flops = accumulation_steps × (
+                            6 × P × B × T + 12 × L × B × T² × D)
 ```
 
 The first term approximates dense forward/backward work and the second charges
 the sequence-length-dependent attention products. `P` includes all parameters
-in the bundled model. Every executed update uses this same charge. Optimizer
+in the bundled model. `B` is microbatch size; gradient accumulation charges
+every microbatch before an optimizer update. Every executed update uses this
+same charge. Optimizer
 operations and evaluation are excluded.
 
 The trainer stops at an explicit estimate of training arithmetic. This is

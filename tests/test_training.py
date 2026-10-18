@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import math
 import mmap
+import signal
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from evogpt.training import (
     _evaluate, estimate_step_flops, prepare_data, sha256_file,
-    train_run, validate_recipe,
+    train_run, validate_recipe, get_lr, TrainingInterrupted, load_data_manifest,
 )
 
 
@@ -88,6 +91,42 @@ class PrepareDataTests(unittest.TestCase):
         recipe["schema_version"] = True
         with self.assertRaises(ValueError):
             validate_recipe(recipe)
+
+    def test_optional_controls_reject_invalid_and_ignored_values(self) -> None:
+        for options in ({"gradient_accumulation_steps": True}, {"compile": 1},
+                        {"dtype": "fp16"}, {"checkpoint_interval": -1},
+                        {"eval_interval": False}, {"warmup_iters": 2},
+                        {"decay_lr": True, "min_lr": 2.0},
+                        {"decay_lr": True, "warmup_iters": 2, "lr_decay_iters": 2}):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                recipe = tiny_recipe()
+                recipe["training"].update(options)
+                validate_recipe(recipe)
+
+    def test_warmup_and_cosine_reach_expected_endpoints(self) -> None:
+        recipe = tiny_recipe()
+        recipe["training"].update(decay_lr=True, warmup_iters=2, lr_decay_iters=10, min_lr=0.0001)
+        _, options = validate_recipe(recipe)
+        self.assertAlmostEqual(get_lr(0, options, 12), 0.001 / 3)
+        self.assertAlmostEqual(get_lr(1, options, 12), 0.002 / 3)
+        self.assertEqual(get_lr(2, options, 12), 0.001)
+        self.assertAlmostEqual(get_lr(6, options, 12), 0.00055)
+        self.assertEqual(get_lr(10, options, 12), 0.0001)
+        self.assertEqual(get_lr(11, options, 12), 0.0001)
+
+    def test_compute_includes_every_accumulated_microbatch_and_rank(self) -> None:
+        model = tiny_recipe()["model"]
+        per_microbatch = estimate_step_flops(500, model, 2)
+        self.assertEqual(estimate_step_flops(500, model, 2, 3, 4), per_microbatch * 12)
+
+    def test_invalid_legacy_tokenizer_is_rejected_without_recursion(self) -> None:
+        prepare_data(self.train, self.val, self.root / "out")
+        path = self.root / "out/manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["tokenizer"]["name"] = "unknown"
+        path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            load_data_manifest(path.parent)
 
 
 @unittest.skipUnless(importlib.util.find_spec("torch") is not None, "install evogpt[train] for CPU smoke tests")
@@ -182,6 +221,123 @@ class TrainingTests(unittest.TestCase):
             first = model(torch.tensor([[1, 2, 3, 4]]))
             second = model(torch.tensor([[1, 2, 99, 100]]))
         self.assertTrue(torch.equal(first[:, :2], second[:, :2]))
+
+    def test_accumulation_charges_all_microbatches_and_complete_updates(self) -> None:
+        self.recipe["training"]["gradient_accumulation_steps"] = 2
+        self.recipe["training"]["eval_interval"] = 1
+        result = self.run_training("accumulated")
+        self.assertEqual(result["train_flops"], 2 * self.step_flops)
+        self.assertEqual(result["train_tokens"], 16)
+        checkpoint = __import__("torch").load(self.root / "accumulated/ckpt.pt", weights_only=True)
+        self.assertEqual(checkpoint["iter_num"], 1)
+        self.assertEqual(checkpoint["train_flops"], result["train_flops"])
+
+    def test_resume_preserves_rng_optimizer_counters_and_log(self) -> None:
+        import torch
+        self.recipe["model"]["dropout"] = 0.2
+        self.recipe["training"].update(gradient_accumulation_steps=2, decay_lr=True,
+                                       warmup_iters=1, min_lr=0.0001, checkpoint_interval=1)
+        self.config["scales"][0]["max_flops"] = 8 * self.step_flops
+        self.config["scales"][1]["max_flops"] = 80 * self.step_flops
+        uninterrupted = self.run_training("full")
+        out = self.root / "resumed"
+        with self.assertRaisesRegex(TrainingInterrupted, "iter 1"):
+            train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                      "tiny-byte", "a" * 40, stop_after_steps=1)
+        self.assertFalse((out / "result.json").exists())
+        prefix = (out / "train.jsonl").read_bytes()
+        interrupted = torch.load(out / "ckpt.pt", weights_only=True)
+        self.assertEqual(interrupted["train_flops"], 2 * self.step_flops)
+        resumed = train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                            "tiny-byte", "a" * 40, resume=True)
+        self.assertEqual(resumed["train_flops"], uninterrupted["train_flops"])
+        self.assertEqual(resumed["train_tokens"], uninterrupted["train_tokens"])
+        self.assertEqual(resumed["val_loss"], uninterrupted["val_loss"])
+        self.assertTrue((out / "train.jsonl").read_bytes().startswith(prefix))
+        self.assertEqual((out / "train.jsonl").read_bytes(), (self.root / "full/train.jsonl").read_bytes())
+        full_state = torch.load(self.root / "full/model.pt", weights_only=True)
+        resumed_state = torch.load(out / "model.pt", weights_only=True)
+        self.assertTrue(all(torch.equal(full_state[key], resumed_state[key]) for key in full_state))
+        before = {file.name: file.read_bytes() for file in out.iterdir()}
+        completed = train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                              "tiny-byte", "a" * 40, resume=True)
+        self.assertEqual(completed, resumed)
+        self.assertEqual(before, {file.name: file.read_bytes() for file in out.iterdir()})
+
+    def test_resume_refuses_changed_budget_source_or_log(self) -> None:
+        out = self.root / "partial"
+        with self.assertRaises(TrainingInterrupted):
+            train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                      "tiny-byte", "a" * 40, stop_after_steps=1)
+        changed_budget = copy.deepcopy(self.config)
+        for scale in changed_budget["scales"]:
+            scale["max_flops"] *= 2
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            train_run(changed_budget, self.recipe, self.data, "tiny", 42, out,
+                      "tiny-byte", "a" * 40, resume=True)
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                      "tiny-byte", "b" * 40, resume=True)
+        with (out / "train.jsonl").open("a") as stream:
+            stream.write("tampered\n")
+        with self.assertRaisesRegex(ValueError, "log differs"):
+            train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                      "tiny-byte", "a" * 40, resume=True)
+
+    def test_uint16_character_training_uses_token_ids_and_vocabulary(self) -> None:
+        from evogpt.datasets import prepare_text
+        source = self.root / "characters.txt"
+        source.write_text("abc λ🌱abcdef λ🌱abcdee" * 8, encoding="utf-8")
+        self.data = self.root / "characters"
+        self.manifest = prepare_text(source, self.data, tokenizer="char")
+        self.recipe["model"]["vocab_size"] = self.manifest["tokenizer"]["vocab_size"]
+        self.config["dataset_id"] = self.manifest["dataset_id"]
+        result = self.run_training("chars-run")
+        self.assertTrue(math.isfinite(result["val_loss"]))
+        manifest = json.loads((self.root / "chars-run/run_manifest.json").read_text())
+        self.assertEqual(manifest["eval_tokens"], self.manifest["val"]["tokens"] - 1)
+        self.assertLess(result["val_loss"], math.log(256))
+
+    def test_ctrl_c_saves_only_after_complete_update_and_restores_handler(self) -> None:
+        import evogpt.training as trainer
+        import torch
+        out = self.root / "interrupted"
+        previous_handler = signal.getsignal(signal.SIGINT)
+        real_batch = trainer._batch
+        requested = False
+
+        def interrupt_once(*args, **kwargs):
+            nonlocal requested
+            batch = real_batch(*args, **kwargs)
+            if not requested:
+                requested = True
+                signal.raise_signal(signal.SIGINT)
+            return batch
+
+        with patch("evogpt.training._batch", side_effect=interrupt_once):
+            with self.assertRaisesRegex(TrainingInterrupted, "interrupted after iter 1"):
+                self.run_training("interrupted")
+        self.assertIs(signal.getsignal(signal.SIGINT), previous_handler)
+        self.assertFalse((out / "result.json").exists())
+        checkpoint = torch.load(out / "ckpt.pt", weights_only=True)
+        self.assertEqual(checkpoint["train_flops"], self.step_flops)
+        self.assertEqual(checkpoint["train_tokens"], 8)
+        resumed = train_run(self.config, self.recipe, self.data, "tiny", 42, out,
+                            "tiny-byte", "a" * 40, resume=True)
+        complete = self.run_training("uninterrupted")
+        self.assertEqual(resumed["val_loss"], complete["val_loss"])
+        self.assertEqual(resumed["train_flops"], complete["train_flops"])
+
+    def test_zero_grad_clip_disables_clipping(self) -> None:
+        self.recipe["training"]["grad_clip"] = 0
+        result = self.run_training("unclipped")
+        self.assertTrue(math.isfinite(result["val_loss"]))
+
+    def test_bfloat16_cpu_autocast_smoke(self) -> None:
+        self.recipe["training"]["dtype"] = "bfloat16"
+        result = self.run_training("bf16")
+        self.assertTrue(math.isfinite(result["val_loss"]))
+        self.assertEqual(result["train_flops"], 2 * self.step_flops)
 
 
 if __name__ == "__main__":

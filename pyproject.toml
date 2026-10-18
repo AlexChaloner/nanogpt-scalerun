@@ -13,7 +13,8 @@ authors = [{name = "EvoGPT contributors"}]
 dependencies = []
 
 [project.optional-dependencies]
-train = ["torch>=2.2,<3"]
+train = ["torch>=2.4,<3"]
+data = ["tiktoken>=0.7,<1"]
 
 [project.scripts]
 evogpt = "evogpt.cli:main"

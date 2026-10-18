@@ -1,0 +1,20 @@
+# Familiar quick start: python train.py config/train_shakespeare_char.py
+out_dir = 'runs/out-shakespeare-char'
+dataset = 'shakespeare_char'
+n_layer = 2
+n_head = 2
+n_embd = 64
+block_size = 64
+batch_size = 8
+max_iters = 200
+learning_rate = 1e-3
+decay_lr = True
+warmup_iters = 20
+lr_decay_iters = max_iters
+min_lr = 1e-4
+eval_interval = 0  # Final full validation; set >0 for full train/val passes during training.
+log_interval = 10
+checkpoint_interval = 50
+device = 'auto'
+dtype = 'float32'
+compile = False

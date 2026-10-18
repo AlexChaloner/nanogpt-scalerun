@@ -94,7 +94,7 @@ def load_config(path=None, overrides=None):
 
 
 def parse_config(argv=None):
-    parser = argparse.ArgumentParser(description="Train a GPT with nanoGPT-style configs and EvoGPT compute caps")
+    parser = argparse.ArgumentParser(description="Train a GPT with nanoGPT-style configs and ScaleRun compute caps")
     parser.add_argument("config", nargs="?", help="config/train_shakespeare_char.py or another scalar config")
     for key, default in DEFAULTS.items():
         parser.add_argument(f"--{key}", type=_value, default=argparse.SUPPRESS,

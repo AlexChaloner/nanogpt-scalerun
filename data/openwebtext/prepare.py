@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from evogpt.datasets import import_tokens
+from scalerun.datasets import import_tokens
 
 
 def main():

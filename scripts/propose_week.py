@@ -4,8 +4,8 @@ import argparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from evogpt import core
-from evogpt.cli import read_json, render_markdown, result_paths, write_json
+from scalerun import core
+from scalerun.cli import read_json, render_markdown, result_paths, write_json
 
 
 def main():

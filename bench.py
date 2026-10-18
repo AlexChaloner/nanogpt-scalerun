@@ -20,7 +20,7 @@ import time
 import torch
 
 from model import GPT, GPTConfig
-from evogpt.training import FLOP_COUNTER, count_flops
+from scalerun.training import FLOP_COUNTER, count_flops
 
 
 def _boolean(value: str) -> bool:

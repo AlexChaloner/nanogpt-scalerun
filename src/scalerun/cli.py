@@ -99,7 +99,7 @@ def _cell(value):
 
 def render_markdown(board):
     """Readable board, using domain fields without generating a hosted service."""
-    lines = ["# EvoGPT leaderboard", "", f"Contest: `{_cell(board['contest_id'])}` · "
+    lines = ["# NanoGPT ScaleRun leaderboard", "", f"Contest: `{_cell(board['contest_id'])}` · "
              f"Status: **{_cell(board['status'])}** · Round: {board['round']}", "",
              "Scores are compute multipliers: how many times this scale's FLOPs the baseline "
              "needs to reach the same loss. Higher is better; the overall score is the weakest "
@@ -151,7 +151,7 @@ def source_revision(recipe_path, requested):
     for source in sources:
         source = source.resolve()
         if not source.is_relative_to(repository):
-            raise ValueError("The recipe and installed EvoGPT source must belong to the same Git checkout; "
+            raise ValueError("The recipe and installed ScaleRun source must belong to the same Git checkout; "
                              "install that checkout with pip install -e .")
         git("ls-files", "--error-unmatch", str(source))
     if git("status", "--porcelain", "--untracked-files=normal"):
@@ -165,7 +165,7 @@ def demo(output):
         raise ValueError(f"Demo destination must be empty: {root}")
     root.mkdir(parents=True, exist_ok=True)
     config = {
-        "schema_version": 1, "contest_id": "evogpt-synthetic-demo",
+        "schema_version": 1, "contest_id": "scalerun-synthetic-demo",
         "dataset_id": "synthetic-demo-no-real-training",
         "scales": [{"id": f"s{i}", "max_flops": 10 ** (14 + i),
                     "baseline_loss": 5.0 - i * 0.5, "baseline_is_fixture": True}
@@ -240,7 +240,7 @@ def calibrate(args):
 
 
 def parser():
-    cli = argparse.ArgumentParser(description="EvoGPT multi-scale benchmark and weekly promotion tools")
+    cli = argparse.ArgumentParser(description="ScaleRun multi-scale benchmark and weekly promotion tools")
     cli.add_argument("--version", action="version", version=__version__)
     commands = cli.add_subparsers(dest="command", required=True)
 
@@ -352,7 +352,7 @@ def main(argv=None):
                     _emit(core.advance(contest, results, state, as_of), args.output)
         return 0
     except (ValueError, OSError, KeyError, TypeError, RuntimeError, ImportError) as error:
-        print(f"evogpt: {error}", file=sys.stderr)
+        print(f"scalerun: {error}", file=sys.stderr)
         return 2
 
 

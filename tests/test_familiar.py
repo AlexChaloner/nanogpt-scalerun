@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 from configurator import load_config
-from evogpt.datasets import import_tokens, load_manifest, open_tokens, prepare_text
+from scalerun.datasets import import_tokens, load_manifest, open_tokens, prepare_text
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -87,7 +87,7 @@ class TokenFormatTests(unittest.TestCase):
                 import_tokens(root / "train.bin", root / "val.bin", root / "data", "char", root / "meta.json")
 
 
-@unittest.skipUnless(importlib.util.find_spec("torch"), "requires evogpt[train]")
+@unittest.skipUnless(importlib.util.find_spec("torch"), "requires nanogpt-scalerun[train]")
 class FamiliarWorkflowTests(unittest.TestCase):
     def test_local_prepare_interrupted_train_sample_resume_and_evaluate(self):
         with tempfile.TemporaryDirectory() as temporary:

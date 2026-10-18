@@ -1,4 +1,4 @@
-"""Train with the familiar nanoGPT command shape and EvoGPT compute accounting.
+"""Train with the familiar nanoGPT command shape and ScaleRun compute accounting.
 
     python train.py config/train_shakespeare_char.py --device=cpu --compile=False
 
@@ -15,10 +15,10 @@ import subprocess
 import sys
 
 from configurator import parse_config
-from evogpt import core
-from evogpt.cli import read_json, source_revision, write_json
-from evogpt.datasets import load_manifest, open_tokens
-from evogpt.training import (
+from scalerun import core
+from scalerun.cli import read_json, source_revision, write_json
+from scalerun.datasets import load_manifest, open_tokens
+from scalerun.training import (
     TrainingInterrupted, _evaluate, _torch, measure_update_flops, sha256_file,
     train_run, validate_recipe,
 )
@@ -61,7 +61,7 @@ def local_config(settings, manifest, recipe):
     scale_id = settings["scale"]
     second_id = "next" if scale_id != "next" else "next-scale"
     return {
-        "schema_version": 1, "contest_id": "evogpt-local-experiment",
+        "schema_version": 1, "contest_id": "scalerun-local-experiment",
         "dataset_id": manifest["dataset_id"],
         "scales": [{"id": scale_id, "max_flops": budget, "baseline_loss": None,
                     "baseline_is_fixture": False},
@@ -84,7 +84,7 @@ def _local_source():
 
 def evaluate_saved_run(output, data_dir, manifest, device):
     import torch
-    from evogpt.model import ByteGPT
+    from scalerun.model import ByteGPT
 
     stored = read_json(output / "run_manifest.json")
     if stored["dataset"]["dataset_id"] != manifest["dataset_id"]:

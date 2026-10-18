@@ -1,4 +1,4 @@
-"""Sample an EvoGPT run with nanoGPT-style command-line settings.
+"""Sample an ScaleRun run with nanoGPT-style command-line settings.
 
 Example: python sample.py --out_dir=runs/shakespeare --start='ROMEO:'
 The manifest selects the tokenizer and verifies the saved model before loading.
@@ -13,8 +13,8 @@ from typing import Any, Callable
 
 import torch
 
-from evogpt.model import GPT, GPTConfig
-from evogpt.training import sha256_file
+from scalerun.model import GPT, GPTConfig
+from scalerun.training import sha256_file
 
 
 class TextTokenizer:
@@ -48,7 +48,7 @@ class TextTokenizer:
             try:
                 import tiktoken
             except ImportError as error:
-                raise RuntimeError("GPT-2 tokenization requires tiktoken; install evogpt[data]") from error
+                raise RuntimeError("GPT-2 tokenization requires tiktoken; install nanogpt-scalerun[data]") from error
             encoding = tiktoken.get_encoding("gpt2")
             self._encode = lambda text: encoding.encode(text, allowed_special={"<|endoftext|>"})
             self._decode = encoding.decode

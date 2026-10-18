@@ -1,4 +1,4 @@
-"""Deterministic scoring and auditable weekly promotions for EvoGPT.
+"""Deterministic scoring and auditable weekly promotions for ScaleRun.
 
 This module uses only the standard library. It never imports or executes a
 participant's code. A result is a claim backed by artifact hashes; independent

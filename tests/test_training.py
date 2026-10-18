@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from evogpt.training import (
+from scalerun.training import (
     _evaluate, count_flops, measure_update_flops, prepare_data, sha256_file,
     train_run, validate_recipe, resolve_recipe, get_lr, TrainingInterrupted, load_data_manifest,
 )
@@ -162,7 +162,7 @@ class PrepareDataTests(unittest.TestCase):
             load_data_manifest(path.parent)
 
 
-@unittest.skipUnless(importlib.util.find_spec("torch") is not None, "install evogpt[train] for CPU smoke tests")
+@unittest.skipUnless(importlib.util.find_spec("torch") is not None, "install nanogpt-scalerun[train] for CPU smoke tests")
 class TrainingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -284,7 +284,7 @@ class TrainingTests(unittest.TestCase):
 
     def test_decoder_cannot_see_future_bytes(self) -> None:
         import torch
-        from evogpt.model import ByteGPT
+        from scalerun.model import ByteGPT
         model = ByteGPT(**self.recipe["model"]).eval()
         with torch.no_grad():
             first = model(torch.tensor([[1, 2, 3, 4]]))
@@ -354,7 +354,7 @@ class TrainingTests(unittest.TestCase):
                       "tiny-byte", "a" * 40, resume=True)
 
     def test_uint16_character_training_uses_token_ids_and_vocabulary(self) -> None:
-        from evogpt.datasets import prepare_text
+        from scalerun.datasets import prepare_text
         source = self.root / "characters.txt"
         source.write_text("abc λ🌱abcdef λ🌱abcdee" * 8, encoding="utf-8")
         self.data = self.root / "characters"
@@ -368,7 +368,7 @@ class TrainingTests(unittest.TestCase):
         self.assertLess(result["val_loss"], math.log(256))
 
     def test_ctrl_c_saves_only_after_complete_update_and_restores_handler(self) -> None:
-        import evogpt.training as trainer
+        import scalerun.training as trainer
         import torch
         out = self.root / "interrupted"
         previous_handler = signal.getsignal(signal.SIGINT)
@@ -383,7 +383,7 @@ class TrainingTests(unittest.TestCase):
                 signal.raise_signal(signal.SIGINT)
             return batch
 
-        with patch("evogpt.training._batch", side_effect=interrupt_once):
+        with patch("scalerun.training._batch", side_effect=interrupt_once):
             with self.assertRaisesRegex(TrainingInterrupted, "interrupted after iter 1"):
                 self.run_training("interrupted")
         self.assertIs(signal.getsignal(signal.SIGINT), previous_handler)

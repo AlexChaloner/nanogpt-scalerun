@@ -1,19 +1,19 @@
 # Design
 
-EvoGPT has two jobs: measure a recipe at multiple compute budgets, and keep a
+ScaleRun has two jobs: measure a recipe at multiple compute budgets, and keep a
 reproducible tournament state over those measurements. Its orchestration uses
 the Python standard library. The optional training baseline uses PyTorch.
 
 ## Why the weakest scale wins
 
 A leaderboard at one training budget can reward ideas that work only at that
-budget. EvoGPT makes the intended behavior explicit: a recipe should improve
+budget. ScaleRun makes the intended behavior explicit: a recipe should improve
 the baseline across a range of budgets.
 
 The minimum only makes sense if scores mean the same thing at every scale.
 A relative loss reduction does not: the baseline curve flattens as compute
 grows, so the same gain shows up as a smaller loss change at larger budgets,
-and the minimum would almost always land on the largest scale. EvoGPT instead
+and the minimum would almost always land on the largest scale. ScaleRun instead
 scores the compute multiplier, the factor by which the baseline's budget must
 grow to match the entry's loss. The calibrated baseline losses define that
 curve. The geometric mean is a deterministic tiebreaker; it does not replace
@@ -51,7 +51,7 @@ this separation to upload a proposal artifact for maintainer review.
 The bundled baseline is an original decoder-only GPT implementation inspired
 by the simplicity of nanoGPT. Root `model.py`, `train.py`, `sample.py`, and
 `config/*.py` provide its familiar experiment interface. The implementation
-lives under `src/evogpt/`. `GPTConfig` and `GPT` expose common model-size names
+lives under `src/scalerun/`. `GPTConfig` and `GPT` expose common model-size names
 and return logits with an optional training loss. This interface does not
 claim compatibility with upstream checkpoints or benchmark results. See
 [Coming from nanoGPT](NANOGPT.md) for the supported subset.
@@ -107,7 +107,7 @@ the seed is reset, so it does not change the run's initialization.
 
 The counter prices matrix multiplies, attention and convolutions; a
 multiply-add is two FLOPs. PyTorch 2.6 has no formula for CPU attention, so
-EvoGPT registers the CUDA formula for it and both devices charge the same
+ScaleRun registers the CUDA formula for it and both devices charge the same
 attention work. Counts still follow the kernel that runs: attention dropout
 selects a different kernel and changes the count slightly.
 

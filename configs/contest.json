@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contest_id": "evogpt-season-001",
+  "contest_id": "scalerun-season-001",
   "dataset_id": "UNCONFIGURED",
   "scales": [
     {"id": "s0", "max_flops": 100000000000000, "baseline_loss": null, "baseline_is_fixture": false},

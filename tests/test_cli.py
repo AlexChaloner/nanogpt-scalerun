@@ -9,9 +9,9 @@ import subprocess
 import tempfile
 import unittest
 
-from evogpt.cli import main, read_json, source_revision, write_json
-from evogpt import core
-from evogpt.page import render_html
+from scalerun.cli import main, read_json, source_revision, write_json
+from scalerun import core
+from scalerun.page import render_html
 
 
 class CliTests(unittest.TestCase):

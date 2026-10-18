@@ -1,6 +1,6 @@
 # Coming from nanoGPT
 
-EvoGPT keeps the small prepare → train → sample workflow familiar to users of
+ScaleRun keeps the small prepare → train → sample workflow familiar to users of
 [Karpathy's nanoGPT](https://github.com/karpathy/nanoGPT#quick-start), then adds
 multiple compute budgets, worst-scale scoring, and weekly promotion. It is an
 independent implementation. Familiar filenames and settings do not imply that
@@ -18,21 +18,21 @@ python sample.py --out_dir=runs/out-shakespeare-char --device=cpu
 Use `python data/shakespeare_char/prepare.py --input /path/to/input.txt` to
 prepare your own text. The preparation writes a character vocabulary and two
 token streams. This is distinct from the byte-tokenized dataset prepared by
-`evogpt prepare`.
+`scalerun prepare`.
 
 The experiment files are deliberately easy to find:
 
 ```text
 model.py                         GPTConfig and GPT imports
 train.py                         config file + --key=value overrides
-sample.py                        generate text from an EvoGPT checkpoint
+sample.py                        generate text from an ScaleRun checkpoint
 bench.py                         synthetic training throughput benchmark
 config/train_shakespeare_char.py small character-level preset
 config/train_gpt2.py              GPT-2-sized architecture preset
 data/shakespeare_char/prepare.py  character token preparation
 data/shakespeare/prepare.py       GPT-2 BPE token preparation
 data/openwebtext/prepare.py       import existing uint16 token streams
-src/evogpt/                      implementation and tournament engine
+src/scalerun/                      implementation and tournament engine
 ```
 
 `python train.py config/train_gpt2.py` uses familiar GPT-2-sized architecture
@@ -55,7 +55,7 @@ there. Keep the checkpoint and its manifest together.
 
 Upstream nanoGPT uses [Python config files followed by `--key=value`
 overrides](https://github.com/karpathy/nanoGPT/blob/master/configurator.py).
-EvoGPT accepts the same command style for its supported settings. Config files
+ScaleRun accepts the same command style for its supported settings. Config files
 contain scalar assignments, references to earlier settings, and simple
 arithmetic such as `gradient_accumulation_steps = 5 * 8`. An unknown or
 unsupported option is an error;
@@ -67,9 +67,9 @@ API](https://github.com/karpathy/nanoGPT/blob/master/model.py): `GPTConfig`,
 `GPT`, model-size settings such as `n_layer`, `n_head`, `n_embd`, and
 `block_size`, and a forward call returning logits and an optional loss.
 The bundled model supports autoregressive sampling. Its weights and module
-layout belong to EvoGPT.
+layout belong to ScaleRun.
 
-| Capability | EvoGPT |
+| Capability | ScaleRun |
 | --- | --- |
 | Prepare → train → sample scripts | Included |
 | Python config + `--key=value` overrides | Included for supported scalar settings |
@@ -77,7 +77,7 @@ layout belong to EvoGPT.
 | Character `uint16` `train.bin` / `val.bin` | Included with `meta.json` metadata |
 | GPT-2 BPE token preparation | Optional `tiktoken` dependency |
 | Existing OpenWebText token binaries | Import supported; download/tokenization pipeline not bundled |
-| Checkpoint resume | EvoGPT checkpoints; source and dataset consistency required |
+| Checkpoint resume | ScaleRun checkpoints; source and dataset consistency required |
 | Gradient accumulation and LR warmup/cosine decay | Included |
 | CUDA mixed precision and `torch.compile` | Included; accelerator behavior needs hardware validation |
 | CPU and single-device training | Included |
@@ -91,7 +91,7 @@ layout belong to EvoGPT.
 
 The upstream [training script](https://github.com/karpathy/nanoGPT/blob/master/train.py)
 is the reference for its DDP, pretrained initialization, checkpoint, logging,
-and optimization behavior. EvoGPT's supported subset is explicit rather than
+and optimization behavior. ScaleRun's supported subset is explicit rather than
 a promise of full compatibility.
 
 Common settings include:
@@ -148,7 +148,7 @@ python train.py config/train_shakespeare_char.py --eval_only=True --device=cpu
 ## Data and scores
 
 Upstream nanoGPT's [character preparation](https://github.com/karpathy/nanoGPT/blob/master/data/shakespeare_char/prepare.py)
-writes raw `uint16` token IDs with `meta.pkl` vocabulary metadata. EvoGPT's
+writes raw `uint16` token IDs with `meta.pkl` vocabulary metadata. ScaleRun's
 character preparation also writes `uint16` streams, but uses explicit JSON
 metadata and a manifest containing data hashes. It does not load pickled
 upstream metadata. Reprepare character data from source text or import token
@@ -179,7 +179,7 @@ official competition results merely because they produce a checkpoint.
 
 An official run uses the frozen contest and one of its configured scale
 budgets. It requires a clean, tracked source revision and a frozen recipe.
-The `evogpt train` workflow in the [README](../README.md#start-a-real-competition)
+The `scalerun train` workflow in the [README](../README.md#start-a-real-competition)
 shows preparation, reference calibration, entry identity, and result export.
 Each scale starts from its own initialization; resume only continues the
 same run and never supplies an uncharged head start at a larger scale.
@@ -200,7 +200,7 @@ time to a target FineWeb validation loss on specified hardware. Its
 streams, require evidence across repeated runs, and compare records on the
 same hardware.
 
-EvoGPT instead measures validation loss at several counted training FLOPs
+ScaleRun instead measures validation loss at several counted training FLOPs
 budgets and ranks the weakest compute multiplier. It does not inherit FineWeb
 scores, timing records, Muon/FP8 optimizations, or speedrun submission
 compatibility. Useful future work includes a pinned curated corpus,
@@ -212,5 +212,5 @@ recipe policies, and a trusted accelerator runner.
 The familiar script names, config style, and model interface are inspired by
 [nanoGPT](https://github.com/karpathy/nanoGPT). The competitive experiment
 format is inspired by [modded-nanogpt](https://github.com/KellerJordan/modded-nanogpt).
-Both upstream repositories are MIT licensed. EvoGPT's multi-scale tournament
+Both upstream repositories are MIT licensed. ScaleRun's multi-scale tournament
 and implementation are maintained independently.

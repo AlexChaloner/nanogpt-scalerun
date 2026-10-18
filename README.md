@@ -1,16 +1,17 @@
-# EvoGPT
+# NanoGPT ScaleRun
 
 **A language-model leaderboard where your weakest compute scale determines
 your rank.**
 
-EvoGPT takes the small, reproducible experiment style of nanoGPT and adds a
-multi-scale tournament. Recipes compete at five 10× training-compute scales,
+ScaleRun is a nanoGPT speedrun across five compute scales. It keeps the
+small, reproducible experiment style of nanoGPT and adds a multi-scale
+tournament. Recipes compete at five 10× training-compute scales,
 spanning four orders of magnitude. Every seven days, the top five eligible recipes
-advance to the next budget. The working name is EvoGPT.
+advance to the next budget.
 
 If you know [nanoGPT](https://github.com/karpathy/nanoGPT), start with the same
 prepare → train → sample loop. `model.py`, `train.py`, `sample.py`, and Python
-files under `config/` are the experiment entrypoints. The `evogpt` CLI adds
+files under `config/` are the experiment entrypoints. The `scalerun` CLI adds
 the competition rules and result accounting.
 
 ## Train a small GPT
@@ -18,7 +19,7 @@ the competition rules and result accounting.
 Python 3.10 or newer is required. From a repository checkout:
 
 ```bash
-cd evogpt
+cd nanogpt-scalerun
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[train]'
@@ -50,7 +51,7 @@ a frozen contest, a scale, calibrated baselines, and a clean source revision;
 the workflow below provides those steps. Local experiments cannot be ranked
 against an official contest.
 
-EvoGPT preserves familiar commands while using its own trainer, dataset
+ScaleRun preserves familiar commands while using its own trainer, dataset
 metadata, and checkpoints. See [Coming from nanoGPT](docs/NANOGPT.md) for
 supported settings, compatibility limits, and what still needs building.
 
@@ -95,14 +96,14 @@ The scoring and tournament tools have no
 runtime dependencies beyond the standard library. From a repository checkout:
 
 ```bash
-cd evogpt
+cd nanogpt-scalerun
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
 
-evogpt demo --output demo-output
-evogpt validate --config demo-output/contest.json --results demo-output/results.json
-evogpt leaderboard --config demo-output/contest.json \
+scalerun demo --output demo-output
+scalerun validate --config demo-output/contest.json --results demo-output/results.json
+scalerun leaderboard --config demo-output/contest.json \
   --results demo-output/results.json --state demo-output/state.json
 ```
 
@@ -121,12 +122,12 @@ and ends each document with a NUL byte:
 ```bash
 python -m pip install -e '.[train,data]'
 python data/fineweb_edu/prepare.py
-evogpt configure --config configs/contest.json --manifest data/fineweb_edu/manifest.json \
+scalerun configure --config configs/contest.json --manifest data/fineweb_edu/manifest.json \
   --epoch-start 2026-11-02T00:00:00Z --output configs/season-uncalibrated.json
 ```
 
 To use another corpus, provide separate UTF-8 training and validation files
-and run `evogpt prepare --train train.txt --val val.txt --output data`. The
+and run `scalerun prepare --train train.txt --val val.txt --output data`. The
 byte-level baseline needs no external tokenizer.
 
 Replace the example launch time with your chosen future UTC start, leaving
@@ -142,7 +143,7 @@ git add configs/season-uncalibrated.json
 git commit -m "Configure dataset and launch time for season one"
 REFERENCE_REVISION=$(git rev-parse HEAD)
 
-evogpt train --config configs/season-uncalibrated.json \
+scalerun train --config configs/season-uncalibrated.json \
   --recipe examples/baseline.json --data data/fineweb_edu --scale s0 --seed 0 \
   --recipe-id baseline --revision "$REFERENCE_REVISION" \
   --output runs/reference/s0/0
@@ -165,10 +166,10 @@ a separate output directory for every run. Keep its source revision fixed.
 Then freeze the measured baseline losses:
 
 ```bash
-evogpt calibrate --config configs/season-uncalibrated.json \
+scalerun calibrate --config configs/season-uncalibrated.json \
   --results runs/reference --recipe-id baseline --revision "$REFERENCE_REVISION" \
   --output configs/season.json
-evogpt init --config configs/season.json --output competition/state.json
+scalerun init --config configs/season.json --output competition/state.json
 ```
 
 Calibration writes `configs/season.calibration.json` with the source
@@ -192,12 +193,12 @@ can be a JSON or JSONL file, or a directory containing run `result.json` files.
 Multiple paths are accepted after `--results`.
 
 ```bash
-evogpt validate --config configs/season.json --results submissions \
+scalerun validate --config configs/season.json --results submissions \
   --state competition/state.json
-evogpt leaderboard --config configs/season.json --results submissions \
+scalerun leaderboard --config configs/season.json --results submissions \
   --state competition/state.json --output leaderboard.json --markdown leaderboard.md \
   --html leaderboard.html
-evogpt advance --config configs/season.json --results submissions \
+scalerun advance --config configs/season.json --results submissions \
   --state competition/state.json --as-of 2026-11-09T00:00:00Z \
   --output competition/state.proposed.json
 ```
@@ -264,7 +265,7 @@ Place accepted result records under `season/results/` and commit the season
 directory. Until the configuration and state exist, the schedule exits with
 setup instructions.
 
-When a round is due, download the `evogpt-weekly-promotion` artifact, review its
+When a round is due, download the `scalerun-weekly-promotion` artifact, review its
 ranking and proposed state, then commit the accepted state as
 `season/state.json`. The workflow has read-only repository permission. It does
 not launch GPU jobs, execute contributor training code, or commit changes.
@@ -276,7 +277,7 @@ Pages → Source** to **GitHub Actions**.
 
 ```bash
 python -m unittest discover -s tests -v
-evogpt --help
+scalerun --help
 ```
 
 Read [the competition rules](docs/RULES.md), [the design](docs/DESIGN.md), and

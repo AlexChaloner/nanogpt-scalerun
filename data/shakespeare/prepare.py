@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import urllib.request
 
-from evogpt.datasets import prepare_text
+from scalerun.datasets import prepare_text
 
 
 def main():

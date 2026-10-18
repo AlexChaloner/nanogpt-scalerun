@@ -1,6 +1,6 @@
 """Readable GPT building blocks with the familiar nanoGPT model interface.
 
-This is EvoGPT's implementation; naming follows karpathy/nanoGPT so recipes,
+This is ScaleRun's implementation; naming follows karpathy/nanoGPT so recipes,
 checkpoints and small experiments feel familiar. The leaderboard's ByteGPT
 adapter returns full logits and keeps its existing constructor.
 """

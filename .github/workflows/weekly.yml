@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: evogpt-weekly-proposal
+  group: scalerun-weekly-proposal
   cancel-in-progress: false
 
 jobs:
@@ -33,6 +33,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ hashFiles('proposal/state.json') != '' }}
         with:
-          name: evogpt-weekly-promotion
+          name: scalerun-weekly-promotion
           path: proposal/
           retention-days: 90

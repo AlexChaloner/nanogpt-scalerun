@@ -1,6 +1,6 @@
 # Contributing
 
-EvoGPT is a small reference implementation of a multi-scale language-model
+ScaleRun is a small reference implementation of a multi-scale language-model
 competition. Contributions should keep the scoring rules reproducible and
 the experiment artifacts inspectable.
 

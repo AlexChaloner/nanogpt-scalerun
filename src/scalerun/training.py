@@ -239,7 +239,7 @@ def _torch() -> Any:
     try:
         import torch
     except ImportError as error:
-        raise RuntimeError("training requires PyTorch: install evogpt[train]") from error
+        raise RuntimeError("training requires PyTorch: install nanogpt-scalerun[train]") from error
     return torch
 
 

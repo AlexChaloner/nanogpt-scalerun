@@ -169,7 +169,7 @@ def render_html(board: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EvoGPT Leaderboard</title>
+<title>NanoGPT ScaleRun</title>
 <style>
 :root {{ color-scheme: light; --bg:#fcfcfb; --panel:#ffffff; --ink:#0b0b0b; --ink2:#52514e; --ink3:#8a8984;
   --rule:#e6e5e0; --grid:#eeede8; --hi:#f3f1ea; --warn:#fff4d6; --warn-ink:#6b4e00; {light} }}
@@ -219,7 +219,7 @@ footer code {{ margin:0; word-break:break-all; white-space:normal; }}
 </head>
 <body>
 <main>
-<h1>EvoGPT</h1>
+<h1>NanoGPT ScaleRun</h1>
 <p class="lede">Which training algorithm wins with scaling?</p>
 <ul class="meta">
 <li>Season <b>{escape(board["contest_id"])}</b></li>

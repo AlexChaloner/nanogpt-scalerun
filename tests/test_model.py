@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 
-@unittest.skipUnless(importlib.util.find_spec("torch") is not None, "install evogpt[train]")
+@unittest.skipUnless(importlib.util.find_spec("torch") is not None, "install nanogpt-scalerun[train]")
 class ModelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -27,7 +27,7 @@ class ModelTests(unittest.TestCase):
 
     def setUp(self) -> None:
         import torch
-        from evogpt.model import GPT, GPTConfig
+        from scalerun.model import GPT, GPTConfig
         torch.manual_seed(42)
         self.model = GPT(GPTConfig(
             block_size=4, vocab_size=7, n_layer=2, n_head=2, n_embd=8,
@@ -91,7 +91,7 @@ class ModelTests(unittest.TestCase):
 
     def test_byte_adapter_arbitrary_vocabulary_bias_and_crop(self) -> None:
         import torch
-        from evogpt.model import ByteGPT
+        from scalerun.model import ByteGPT
         model = ByteGPT(1, 1, 8, context_length=4, vocab_size=11, bias=False).eval()
         self.assertFalse(any(name.endswith("bias") for name, _ in model.named_parameters()))
         self.assertEqual(tuple(model(torch.tensor([[1, 2, 3]])).shape), (1, 3, 11))
@@ -106,14 +106,14 @@ class ModelTests(unittest.TestCase):
 
     def _sample_module(self):
         path = Path(__file__).resolve().parents[1] / "sample.py"
-        spec = importlib.util.spec_from_file_location("evogpt_sample_test", path)
+        spec = importlib.util.spec_from_file_location("scalerun_sample_test", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
 
     def _save_sample_run(self, root: Path) -> dict:
         import torch
-        from evogpt.training import sha256_file
+        from scalerun.training import sha256_file
         torch.save(self.model.state_dict(), root / "model.pt")
         manifest = {
             "recipe": {"model": {
@@ -162,7 +162,7 @@ class ModelTests(unittest.TestCase):
 
     def test_legacy_byte_checkpoint_names_load_without_changing_logits(self) -> None:
         import torch
-        from evogpt.training import sha256_file
+        from scalerun.training import sha256_file
         sample = self._sample_module()
         old_state = {}
         for name, value in self.model.state_dict().items():
@@ -190,7 +190,7 @@ class ModelTests(unittest.TestCase):
     def test_sampling_full_checkpoint_fallback_requires_its_hash(self) -> None:
         import torch
         from dataclasses import asdict
-        from evogpt.training import sha256_file
+        from scalerun.training import sha256_file
         sample = self._sample_module()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: evogpt-pages
+  group: scalerun-pages
   cancel-in-progress: true
 
 jobs:
@@ -32,10 +32,10 @@ jobs:
           if [[ -f season/contest.json && -f season/state.json ]]; then
             results=()
             [[ -d season/results ]] && results=(--results season/results)
-            evogpt leaderboard --config season/contest.json --state season/state.json "${results[@]}" \
+            scalerun leaderboard --config season/contest.json --state season/state.json "${results[@]}" \
               --output site/leaderboard.json --html site/index.html
           else
-            evogpt demo --output demo
+            scalerun demo --output demo
             cp demo/leaderboard.html site/index.html
             cp demo/leaderboard.json site/leaderboard.json
           fi

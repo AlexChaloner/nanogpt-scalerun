@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from evogpt.core import (
+from scalerun.core import (
     ValidationError, advance, baseline_loss_at, compute_multiplier, config_digest, initial_state, leaderboard,
     load_config, load_results, parse_config, parse_result, validate_state,
 )

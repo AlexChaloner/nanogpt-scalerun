@@ -14,7 +14,7 @@ import hashlib
 from pathlib import Path
 import urllib.request
 
-from evogpt.training import prepare_data
+from scalerun.training import prepare_data
 
 
 REVISION = '87f09149ef4734204d70ed1d046ddc9ca3f2b8f9'

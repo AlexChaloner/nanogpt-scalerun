@@ -14,7 +14,7 @@ dependencies = []
 
 [project.optional-dependencies]
 train = ["torch>=2.4,<3"]
-data = ["tiktoken>=0.7,<1"]
+data = ["tiktoken>=0.7,<1", "pyarrow>=14"]
 
 [project.scripts]
 evogpt = "evogpt.cli:main"

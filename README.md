@@ -113,16 +113,21 @@ Demo records and their fixture baselines stay separate from real competitions.
 
 ## Start a real competition
 
-Choose a dataset you can redistribute or identify reproducibly, and provide
-separate UTF-8 training and validation files. The byte-level competition
-baseline needs no external tokenizer; `evogpt prepare` uses your local files.
+The default corpus is 6 GB of FineWeb-Edu text (ODC-By 1.0), enough for the
+top scale. The preparation script downloads three pinned shards (about 4.9 GB),
+checks their hashes, takes training and validation text from different shards,
+and ends each document with a NUL byte:
 
 ```bash
-python -m pip install -e '.[train]'
-evogpt prepare --train /path/to/train.txt --val /path/to/val.txt --output data
-evogpt configure --config configs/contest.json --manifest data/manifest.json \
+python -m pip install -e '.[train,data]'
+python data/fineweb_edu/prepare.py
+evogpt configure --config configs/contest.json --manifest data/fineweb_edu/manifest.json \
   --epoch-start 2026-11-02T00:00:00Z --output configs/season-uncalibrated.json
 ```
+
+To use another corpus, provide separate UTF-8 training and validation files
+and run `evogpt prepare --train train.txt --val val.txt --output data`. The
+byte-level baseline needs no external tokenizer.
 
 Replace the example launch time with your chosen future UTC start, leaving
 time for reference calibration. The preparation step records data hashes and
@@ -138,7 +143,7 @@ git commit -m "Configure dataset and launch time for season one"
 REFERENCE_REVISION=$(git rev-parse HEAD)
 
 evogpt train --config configs/season-uncalibrated.json \
-  --recipe examples/baseline.json --data data --scale s0 --seed 0 \
+  --recipe examples/baseline.json --data data/fineweb_edu --scale s0 --seed 0 \
   --recipe-id baseline --revision "$REFERENCE_REVISION" \
   --output runs/reference/s0/0
 ```

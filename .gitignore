@@ -19,3 +19,5 @@ demo-output/
 *.bin
 .env
 *.tmp
+!data/fineweb_edu/
+!data/fineweb_edu/prepare.py
